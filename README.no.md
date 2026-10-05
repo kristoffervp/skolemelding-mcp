@@ -4,7 +4,7 @@ Norsk · [English](README.md)
 
 Les meldinger og vedlegg fra Skoleplattform Oslo med en lokal MCP-server. De tre verktøyene viser meldinger, leser en melding og laster ned et vedlegg. De sender ikke svar og markerer ikke meldinger som lest.
 
-Dette er en enkel lokal versjon som kjører på din egen datamaskin. Den viser opptil 100 nylige meldinger og har foreløpig ikke søk på nøkkelord eller datointervall.
+Dette er en enkel lokal versjon som kjører på din egen datamaskin. `list_messages` viser maks 100 meldinger; søk på nøkkelord eller datointervall finnes ikke ennå. Hvis du kjenner meldings-ID-en, kan `get_message` også finne eldre meldinger ved å bla gjennom opptil 1 500 innboksmeldinger. Koden har ingen fast datogrense, men hvor langt tilbake den når, avhenger av Skolemelding-tjenesten og hvor mange nyere meldinger du har.
 
 Ved enkelte skoler i Osloskolen sendes ikke lenger meldingsinnhold og vedlegg på e-post. Denne MCP-en gjør det enklere å hente dem fra Skolemelding og bruke dem i en agentisk arbeidsflyt. Du er selv ansvarlig for å vurdere om skoleinformasjon skal deles med ChatGPT eller andre skybaserte eller kommersielle KI-tjenester.
 

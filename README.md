@@ -38,9 +38,13 @@ Save, restart ChatGPT, then type `/mcp` in a chat to check the connection. Repla
 
 The [ChatGPT desktop app supports local MCP servers](https://learn.chatgpt.com/docs/extend/mcp). ChatGPT in a web browser does not use this local setup.
 
-## Privacy and license
+## Security and privacy
 
-Your sign-in is stored in `.data/`. Keep it private. School messages sent to a cloud AI client may leave your computer. This integration uses undocumented Skolemelding endpoints that may change; if the session expires, run `npm run login` again.
+This MCP runs locally and does not open a network port. An AI client you connect can still retrieve school messages and attachments from your account. Content used with a cloud AI service may be sent to that service. Messages may also contain text intended to influence the agent. Use clients you trust, review tool calls, and never share the sign-in files in `.data/`.
+
+The integration uses undocumented Skolemelding endpoints that may change. If your session expires, run `npm run login` again.
+
+## License
 
 The code and documentation use the [0BSD license](LICENSE): free for anyone to use, change, and share for any purpose, including commercial use, without attribution. The license does not cover the Skolemelding service or its data.
 

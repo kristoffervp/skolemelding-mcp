@@ -38,9 +38,13 @@ Lagre, start ChatGPT på nytt, og skriv `/mcp` i en samtale for å kontrollere t
 
 [ChatGPT-appen støtter lokale MCP-servere](https://learn.chatgpt.com/docs/extend/mcp). ChatGPT i nettleseren bruker ikke dette lokale oppsettet.
 
-## Personvern og lisens
+## Sikkerhet og personvern
 
-Innloggingen lagres i `.data/`. Hold mappen privat. Skolemeldinger sendt til en KI-tjeneste i skyen kan forlate datamaskinen. Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
+Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`.
+
+Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
+
+## Lisens
 
 Koden og dokumentasjonen har [0BSD-lisens](LICENSE): alle kan bruke, endre og dele dem gratis til alle formål, også kommersielt, uten krav om kreditering. Lisensen gjelder ikke Skolemelding-tjenesten eller innholdet der.
 

@@ -21,7 +21,7 @@ npm run login
 
 Fullfør innloggingen via ID-porten i Chrome. Kjør `npm test` for å kontrollere serveren uten å bruke kontoen din.
 
-## Legg til i ChatGPT-appen
+## Legg til i ChatGPT-appen (eksempel)
 
 Åpne **Settings → MCP servers → Add server** og velg **STDIO**. Fyll inn:
 
@@ -36,7 +36,7 @@ Lagre, start ChatGPT på nytt, og skriv `/mcp` i en samtale for å kontrollere t
 
 ![Oppsett av lokal MCP-server i ChatGPT med kommando, argument og arbeidsmappe](docs/chatgpt-mcp-setup.png)
 
-[ChatGPT-appen støtter lokale MCP-servere](https://learn.chatgpt.com/docs/extend/mcp). ChatGPT i nettleseren bruker ikke dette lokale oppsettet.
+Dette skjermbildet viser bare ett eksempel på oppsett. Serveren kan også brukes med [Claude Desktop](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop), [Grok Build](https://docs.x.ai/build/features/mcp-servers) eller en klient med en lokal KI-modell hvis klienten støtter lokale MCP-servere via stdio. Følg oppsettet for din klient; en modell alene kan ikke koble seg til MCP. ChatGPT i nettleseren bruker ikke dette lokale oppsettet.
 
 ## Sikkerhet og personvern
 

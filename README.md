@@ -21,7 +21,7 @@ npm run login
 
 Complete the ID-porten sign-in in Chrome. Run `npm test` to check the server without using your account.
 
-## Add to the ChatGPT desktop app
+## Add to the ChatGPT desktop app (example)
 
 Open **Settings → MCP servers → Add server** and choose **STDIO**. Enter:
 
@@ -36,7 +36,7 @@ Save, restart ChatGPT, then type `/mcp` in a chat to check the connection. Repla
 
 ![ChatGPT desktop MCP server setup showing the command, argument, and working directory fields](docs/chatgpt-mcp-setup.png)
 
-The [ChatGPT desktop app supports local MCP servers](https://learn.chatgpt.com/docs/extend/mcp). ChatGPT in a web browser does not use this local setup.
+This screenshot shows just one setup example. The server can also work with [Claude Desktop](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop), [Grok Build](https://docs.x.ai/build/features/mcp-servers), or a client using a local AI model if that client supports local stdio MCP servers. Follow each client's setup instructions; a model alone cannot connect to MCP. ChatGPT in a web browser does not use this local setup.
 
 ## Security and privacy
 

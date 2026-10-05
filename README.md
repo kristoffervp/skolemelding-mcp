@@ -4,6 +4,8 @@ English · [Norsk](README.no.md)
 
 Read Skoleplattform Oslo messages and attachments through a local MCP server. Its three tools list messages, read a message, and download an attachment. They do not send replies or mark messages as read.
 
+This is a simple local version that runs on your own computer. It lists up to 100 recent messages and does not yet offer keyword or date-range search.
+
 At some Oslo schools, email notifications no longer include message contents or attachments. This MCP makes it easier to retrieve them from Skolemelding and use them in an agent workflow. You are responsible for deciding whether to share school information with ChatGPT or other cloud-based or commercial AI services.
 
 **Tested only on macOS with Google Chrome. Other platforms and browsers have not been tested.**

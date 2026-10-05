@@ -1,0 +1,24 @@
+# Public source files are listed explicitly so local sessions, APKs, profiles,
+# research, and future scratch files cannot be added by `git add .`.
+/*
+!/.gitignore
+!/LICENSE
+!/README.md
+!/README.no.md
+!/package.json
+!/package-lock.json
+!/docs/
+/docs/*
+!/docs/chatgpt-mcp-setup.png
+!/src/
+/src/*
+!/src/browser.js
+!/src/login-mobile.js
+!/src/mobile-auth.js
+!/src/mobile-client.js
+!/src/portal.js
+!/src/server.js
+!/test/
+/test/*
+!/test/mobile-auth.test.js
+!/test/server.test.js

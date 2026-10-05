@@ -1,0 +1,21 @@
+{
+  "name": "skolemelding-mcp",
+  "version": "0.2.0",
+  "license": "0BSD",
+  "private": true,
+  "type": "module",
+  "description": "Personal, read-only MCP for Skoleplattform Oslo messages",
+  "bin": {
+    "skolemelding-mcp": "./src/server.js"
+  },
+  "scripts": {
+    "login": "node src/login-mobile.js",
+    "login:mobile": "node src/login-mobile.js",
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "html-to-text": "^10.0.1",
+    "playwright": "^1.58.0"
+  }
+}

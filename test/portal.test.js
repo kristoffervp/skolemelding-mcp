@@ -237,6 +237,12 @@ test('search and filters are sent to Skolemelding and combine with the child fil
   await assert.rejects(portal.listMessages(30, { unreadOnly: 'yes' }), /Filters must be/);
 });
 
+test('unread_only leaves out chats the portal returns although they are read', async () => {
+  const mobile = fakeMobile([message(3, { IsChat: true, IsMessageSeen: true }), message(2), message(1, { IsMessageSeen: true })]);
+  const listed = await new Portal({ mobile }).listMessages(30, { unreadOnly: true });
+  assert.deepEqual(listed.map(({ id }) => id), ['2']);
+});
+
 test('messages show yes/no questions and read confirmation requests', async () => {
   const portal = new Portal({ mobile: fakeMobile([
     message(3, { IsFeedBackQuestion: true, QuestionText: '<p>Kan barnet&nbsp;delta?</p>' }),

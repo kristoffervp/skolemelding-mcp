@@ -250,6 +250,11 @@ export class Portal {
       children = found.children;
       matches = (message) => this.#childUserNames(message).includes(found.child.userName);
     }
+    // The portal's unread filter also returns some chats it marks as read, so unread is checked here as well.
+    if (unreadOnly) {
+      const forChild = matches;
+      matches = (message) => message.IsMessageSeen === false && forChild(message);
+    }
     const messages = (await this.#search({ limit, matches, filters })).filter(matches).slice(0, limit);
     return messages.map((message) => this.#normalize(message, { children }));
   }

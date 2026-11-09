@@ -72,7 +72,7 @@ The sign-in imitates the official Skolemelding Foresatte app. If Skolemelding st
 
 ## Security and privacy
 
-This MCP runs locally and does not open a network port. An AI client you connect can still retrieve school messages and attachments from your account. Content used with a cloud AI service may be sent to that service. Messages may also contain text intended to influence the agent. The MCP removes invisible characters and text hidden in the message HTML, and its tool descriptions tell the client to treat message text as information, not instructions, but this cannot stop every attempt. Use clients you trust, review tool calls, and never share the sign-in files in `.data/`. Saved attachments stay in the attachment folder until you delete them.
+This MCP runs locally and does not open a network port. An AI client you connect can still retrieve school messages and attachments from your account. Content used with a cloud AI service may be sent to that service. Messages may also contain text intended to influence the agent. The MCP removes invisible characters and text hidden in the message HTML, and its tool descriptions tell the client to treat message text as information, not instructions, but this cannot stop every attempt. Use clients you trust, review tool calls, and never share the sign-in files in `.data/`. Saved attachments stay in the attachment folder until you delete them. Attachment paths returned to the AI client include your user name on this computer.
 
 Signing in registers this computer as a device on your Skolemelding account, the same way the mobile app does. It sends the operating system name and kernel version (for example `darwin|25.6.0`), the app version, and a random device ID created at sign-in.
 
@@ -88,6 +88,7 @@ The integration uses undocumented Skolemelding endpoints that may change. If you
 - Attachments of unusual types are saved with `.download` added, and saved attachments are marked as downloaded on macOS and Windows.
 - Messages no longer include `recipients`.
 - Only one inbox scan runs at a time, and a scan stops after 90 seconds. Error messages no longer show local file paths.
+- Sign-in requests no longer follow redirects, one malformed message can no longer break `list_messages` or `get_message`, and a refused attachment gives a clearer error. See [#12](https://github.com/kristoffervp/skolemelding-mcp/issues/12).
 
 ### 0.5.0
 - `list_messages` takes `search`, `unread_only`, `questions_only` and `absence_only`. Skolemelding does the searching and filtering.

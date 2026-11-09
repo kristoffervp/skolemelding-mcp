@@ -14,11 +14,12 @@ globalThis.fetch = async (url, options) => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     if (JSON.parse(options.body).SearchTerm === 'nothing') return Response.json({ TotalMatching: 0, Result: [] });
     return Response.json({ TotalMatching: 1, Result: [{ Id: 7, Header: 'Hi', Body: '<p>Hello</p>', OnBehalfOf: 'ada01',
-      Attachments: ['/globalassets/attachments/plan.pdf', '/globalassets/attachments/photo.png'] }] });
+      Attachments: ['/globalassets/attachments/plan.pdf', '/globalassets/attachments/photo.png', '/globalassets/attachments/gone.pdf'] }] });
   }
   if (pathname === '/api/MyProfile/GetChildInfo') {
     return Response.json({ FirstName: 'Parent', ParentChildOptions: [{ FirstName: 'Ada', LastName: 'Hansen', SchoolName: 'Nordpolen skole', UserName: 'ada01' }] });
   }
+  if (pathname.endsWith('/gone.pdf')) return new Response('<html>Forbidden</html>', { status: 403, headers: { 'Content-Type': 'text/html' } });
   if (pathname.startsWith('/globalassets/attachments/')) {
     return new Response('bytes', { headers: { 'Content-Type': pathname.endsWith('.png') ? 'image/png' : 'application/pdf' } });
   }
@@ -43,11 +44,16 @@ function startServer({ env = {}, nodeArgs = [] } = {}) {
     pending.set(requestId, resolve);
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: requestId, method, params }) + '\n');
   });
+  // Sends a raw message whose reply is expected to carry id null.
+  const send = (message) => new Promise((resolve) => {
+    pending.set(null, resolve);
+    child.stdin.write(JSON.stringify(message) + '\n');
+  });
   const stop = async () => {
     child.stdin.end();
     await new Promise((resolve) => child.on('close', resolve));
   };
-  return { call, order, stop };
+  return { call, send, order, stop };
 }
 
 test('MCP exposes only the four read tools and negotiates a protocol version', async () => {
@@ -74,6 +80,10 @@ test('MCP exposes only the four read tools and negotiates a protocol version', a
     assert.match(signedOut.result.content[0].text, /npm run login first/);
     const unknown = await server.call('tools/call', { name: 'toString', arguments: {} });
     assert.equal(unknown.error.code, -32602);
+    const arrayName = await server.call('tools/call', { name: ['list_children'], arguments: {} });
+    assert.equal(arrayName.error.code, -32602);
+    const badId = await server.send({ jsonrpc: '2.0', id: { nested: true }, method: 'ping' });
+    assert.deepEqual(badId, { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid request' } });
   } finally {
     await server.stop();
   }
@@ -115,6 +125,23 @@ test('slow calls do not block ping, and attachment content uses MCP content type
 
     const png = await server.call('tools/call', { name: 'get_attachment', arguments: { attachment_id: '7:1', include_content: true } });
     assert.deepEqual(png.result.content[1], { type: 'image', data: Buffer.from('bytes').toString('base64'), mimeType: 'image/png' });
+
+    const gone = await server.call('tools/call', { name: 'get_attachment', arguments: { attachment_id: '7:2' } });
+    assert.equal(gone.result.isError, true);
+    assert.match(gone.result.content[0].text, /refused this attachment \(HTTP 403\)/);
+  } finally {
+    await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('local file errors do not reveal paths', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'skolemelding-mcp-test-'));
+  const server = startServer({ env: { SKOLEMELDING_MOBILE_AUTH_FILE: directory } });
+  try {
+    const failed = await server.call('tools/call', { name: 'list_children', arguments: {} });
+    assert.equal(failed.result.isError, true);
+    assert.equal(failed.result.content[0].text, 'Local file error (EISDIR).');
   } finally {
     await server.stop();
     await rm(directory, { recursive: true, force: true });

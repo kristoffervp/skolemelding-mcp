@@ -72,7 +72,7 @@ Innloggingen etterligner den offisielle appen Skolemelding Foresatte. Hvis Skole
 
 ## Sikkerhet og personvern
 
-Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. MCP-en fjerner usynlige tegn og tekst som er skjult i meldingens HTML, og verktøybeskrivelsene ber klienten behandle meldingstekst som informasjon, ikke instruksjoner, men det kan ikke stoppe alle forsøk. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`. Lagrede vedlegg blir liggende i vedleggsmappen til du sletter dem.
+Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. MCP-en fjerner usynlige tegn og tekst som er skjult i meldingens HTML, og verktøybeskrivelsene ber klienten behandle meldingstekst som informasjon, ikke instruksjoner, men det kan ikke stoppe alle forsøk. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`. Lagrede vedlegg blir liggende i vedleggsmappen til du sletter dem. Stiene til vedlegg som sendes til KI-klienten, inneholder brukernavnet ditt på denne datamaskinen.
 
 Innloggingen registrerer denne datamaskinen som en enhet på Skolemelding-kontoen din, slik mobilappen gjør. Den sender navnet på operativsystemet og kjerneversjonen (for eksempel `darwin|25.6.0`), appversjonen og en tilfeldig enhets-ID som lages ved innlogging.
 
@@ -88,6 +88,7 @@ Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis ø
 - Vedlegg av uvanlige filtyper lagres med `.download` lagt til, og lagrede vedlegg merkes som lastet ned på macOS og Windows.
 - Meldinger har ikke lenger `recipients`.
 - Bare ett søk gjennom innboksen kjører om gangen, og et søk stopper etter 90 sekunder. Feilmeldinger viser ikke lenger lokale filstier.
+- Innloggingen følger ikke lenger omdirigeringer, én feilformet melding kan ikke lenger stoppe `list_messages` eller `get_message`, og et avvist vedlegg gir en tydeligere feilmelding. Se [#12](https://github.com/kristoffervp/skolemelding-mcp/issues/12).
 
 ### 0.5.0
 - `list_messages` tar imot `search`, `unread_only`, `questions_only` og `absence_only`. Søket og filtreringen gjøres av Skolemelding.

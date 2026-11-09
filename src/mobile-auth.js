@@ -6,10 +6,13 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { browserChannel, loadPlaywright, mobileAuthFilePath, mobileProfilePath } from './browser.js';
 
 const portalOrigin = 'https://portal.skoleplattform.no';
-const clientId = 'd12dad8a-f092-4a96-8a37-371590825d22';
+// Values used by the official Skolemelding Foresatte app. Override them if an app update makes the portal reject these.
+const clientId = process.env.SKOLEMELDING_OIDC_CLIENT_ID || 'd12dad8a-f092-4a96-8a37-371590825d22';
 const redirectUri = 'com.cgi.oslomelding.foresatte://oauth';
-const tokenClientId = 'consoleAPP';
-const appVersion = '6.0.6';
+const tokenClientId = process.env.SKOLEMELDING_TOKEN_CLIENT_ID || 'consoleAPP';
+const appVersion = process.env.SKOLEMELDING_APP_VERSION || '6.0.6';
+
+export const outdatedHint = `If this keeps happening, the app version (${appVersion}) may be outdated; see SKOLEMELDING_APP_VERSION in the README.`;
 
 async function jsonRequest(url, options) {
   let response;
@@ -43,7 +46,7 @@ export async function saveMobileAuth(auth) {
 export async function readMobileAuth() {
   const auth = JSON.parse(await readFile(mobileAuthFilePath, 'utf8'));
   if (!auth.accessToken || !auth.refreshToken || !auth.userName) {
-    throw new Error('Saved mobile sign-in is incomplete. Run npm run login:mobile again.');
+    throw new Error('Saved mobile sign-in is incomplete. Run npm run login again.');
   }
   return auth;
 }
@@ -88,7 +91,7 @@ export async function refreshMobileAuth(auth, { preferProvided = false } = {}) {
       grant_type: 'refresh_token', refresh_token: current.refreshToken,
       client_id: tokenClientId, app_version: appVersion, username: current.userName,
     });
-    if (!response.access_token) throw new Error('Skolemelding did not return a new access token. Run npm run login:mobile again.');
+    if (!response.access_token) throw new Error('Skolemelding did not return a new access token. Run npm run login again.');
     const updated = {
       ...current,
       accessToken: response.access_token,
@@ -121,7 +124,7 @@ export async function loginMobile() {
   });
   try {
     const callback = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Sign-in timed out after ten minutes. Run npm run login:mobile again.')), 600_000);
+      const timer = setTimeout(() => reject(new Error('Sign-in timed out after ten minutes. Run npm run login again.')), 600_000);
       const attach = (page) => page.on('request', (request) => {
         if (!request.url().startsWith(`${redirectUri}?`)) return;
         clearTimeout(timer);

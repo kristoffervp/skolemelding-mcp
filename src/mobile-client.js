@@ -1,4 +1,4 @@
-import { readMobileAuth, refreshMobileAuth } from './mobile-auth.js';
+import { outdatedHint, readMobileAuth, refreshMobileAuth } from './mobile-auth.js';
 
 const origin = 'https://portal.skoleplattform.no';
 
@@ -7,7 +7,12 @@ export class MobileClient {
   #refreshing;
 
   async open() {
-    if (!this.#auth) this.#auth = await readMobileAuth();
+    if (this.#auth) return;
+    try { this.#auth = await readMobileAuth(); }
+    catch (error) {
+      if (error.code === 'ENOENT') throw new Error('Not signed in to Skolemelding. Run npm run login first.');
+      throw error;
+    }
   }
 
   async #refresh() {
@@ -15,7 +20,7 @@ export class MobileClient {
       this.#refreshing = refreshMobileAuth(this.#auth).then((auth) => { this.#auth = auth; })
         .catch((error) => {
           if (error.httpStatus === 400 || error.httpStatus === 401) {
-            throw new Error('Skolemelding mobile sign-in has expired. Run npm run login:mobile again.');
+            throw new Error(`Skolemelding sign-in has expired or was rejected. Run npm run login again. ${outdatedHint}`);
           }
           throw error;
         })
@@ -45,7 +50,7 @@ export class MobileClient {
     return response;
   }
 
-  async searchPage(page, pageSize = 15) {
+  async searchPage(page, pageSize) {
     const response = await this.#request('/api/messagesearchmobile/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({

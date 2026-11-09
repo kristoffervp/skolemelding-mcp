@@ -1,7 +1,13 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { convert } from 'html-to-text';
+import { attachmentDirPath } from './browser.js';
 import { MobileClient } from './mobile-client.js';
 
 const origin = 'https://portal.skoleplattform.no';
+const pageSize = 15;
+const maxPages = 100;
+const cacheTtl = 5 * 60_000;
 
 function attachmentInfo(path, messageId, index) {
   if (typeof path !== 'string') return null;
@@ -15,29 +21,56 @@ function attachmentInfo(path, messageId, index) {
   return { id: `${messageId}:${index}`, name, url: url.href };
 }
 
+function fileName(messageId, index, name) {
+  const safe = name.replace(/[\u0000-\u001f/\\:]/g, '_').slice(0, 150) || 'attachment';
+  return `${messageId}-${index}-${safe}`;
+}
+
 function plainText(html) {
   return convert(html || '', { wordwrap: false })
-    .replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').trim();
+    .replace(/ /g, ' ').replace(/[ \t]+\n/g, '\n').trim();
 }
 
 export class Portal {
-  #mobile = new MobileClient();
+  #mobile;
+  #attachmentDir;
+  #cache = new Map();
+
+  constructor({ mobile = new MobileClient(), attachmentDir = attachmentDirPath } = {}) {
+    this.#mobile = mobile;
+    this.#attachmentDir = attachmentDir;
+  }
 
   async close() {}
 
+  #remember(messages) {
+    const now = Date.now();
+    for (const [id, entry] of this.#cache) if (now - entry.at >= cacheTtl) this.#cache.delete(id);
+    for (const message of messages) this.#cache.set(String(message.Id), { message, at: now });
+  }
+
   async #search({ id, limit = 30 } = {}) {
     const messages = [];
-    for (let page = 1; page <= 100; page++) {
-      const payload = await this.#mobile.searchPage(page);
+    for (let page = 1; page <= maxPages; page++) {
+      const payload = await this.#mobile.searchPage(page, pageSize);
       messages.push(...payload.Result);
+      this.#remember(payload.Result);
       if (id && messages.some((message) => String(message.Id) === id)) break;
       if (!id && messages.length >= limit) break;
-      if (messages.length >= Number(payload.TotalMatching) || payload.Result.length < 15) break;
+      if (messages.length >= Number(payload.TotalMatching) || payload.Result.length < pageSize) break;
     }
     return messages;
   }
 
-  #normalize(message, { full = false } = {}) {
+  async #find(id) {
+    const entry = this.#cache.get(id);
+    if (entry && Date.now() - entry.at < cacheTtl) return entry.message;
+    const message = (await this.#search({ id })).find((item) => String(item.Id) === id);
+    if (!message) throw new Error('Message not found in the inbox.');
+    return message;
+  }
+
+  #normalize(message, { full = false, includeHtml = false } = {}) {
     const id = String(message.Id);
     const attachments = (Array.isArray(message.Attachments) ? message.Attachments : [])
       .map((path, index) => attachmentInfo(path, id, index)).filter(Boolean);
@@ -52,7 +85,7 @@ export class Portal {
     };
     if (full) {
       result.bodyText = plainText(message.Body);
-      result.bodyHtml = message.Body || '';
+      if (includeHtml) result.bodyHtml = message.Body || '';
       result.attachments = attachments.map(({ id: attachmentId, name }) => ({ id: attachmentId, name }));
       result.threads = message.Threads || [];
     } else {
@@ -67,24 +100,24 @@ export class Portal {
     return messages.map((message) => this.#normalize(message));
   }
 
-  async getMessage(id) {
+  async getMessage(id, { includeHtml = false } = {}) {
     if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new Error('Invalid message ID.');
-    const message = (await this.#search({ id })).find((item) => String(item.Id) === id);
-    if (!message) throw new Error('Message not found in the inbox.');
-    return this.#normalize(message, { full: true });
+    return this.#normalize(await this.#find(id), { full: true, includeHtml });
   }
 
-  async getAttachment(attachmentId) {
+  async getAttachment(attachmentId, { includeContent = false } = {}) {
     const match = typeof attachmentId === 'string' && attachmentId.match(/^(\d+):(\d+)$/);
     if (!match) throw new Error('Invalid attachment ID.');
-    const message = (await this.#search({ id: match[1] }))
-      .find((item) => String(item.Id) === match[1]);
-    if (!message) throw new Error('Message not found in the inbox.');
-    const path = Array.isArray(message.Attachments) ? message.Attachments[Number(match[2])] : undefined;
-    const attachment = attachmentInfo(path, match[1], Number(match[2]));
+    const [, messageId, index] = match;
+    const message = await this.#find(messageId);
+    const path = Array.isArray(message.Attachments) ? message.Attachments[Number(index)] : undefined;
+    const attachment = attachmentInfo(path, messageId, Number(index));
     if (!attachment) throw new Error('Attachment not found.');
     const { bytes, mimeType } = await this.#mobile.getAttachment(attachment.url);
-    return { id: attachmentId, name: attachment.name, mimeType,
-      size: bytes.length, base64: bytes.toString('base64') };
+    await mkdir(this.#attachmentDir, { recursive: true, mode: 0o700 });
+    const filePath = join(this.#attachmentDir, fileName(messageId, index, attachment.name));
+    await writeFile(filePath, bytes, { mode: 0o600 });
+    const result = { id: attachmentId, name: attachment.name, mimeType, size: bytes.length, path: filePath };
+    return includeContent ? { ...result, bytes } : result;
   }
 }

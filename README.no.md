@@ -10,8 +10,6 @@ Hver melding viser hvilke barn den gjelder. Har du flere barn i Osloskolen, vise
 
 Ved enkelte skoler i Osloskolen sendes ikke lenger meldingsinnhold og vedlegg på e-post. Denne MCP-en gjør det enklere å hente dem fra Skolemelding og bruke dem i en agentisk arbeidsflyt. Du er selv ansvarlig for å vurdere om skoleinformasjon skal deles med ChatGPT eller andre skybaserte eller kommersielle KI-tjenester.
 
-**Kun testet på macOS med Google Chrome. Andre plattformer og nettlesere er ikke testet.**
-
 ## Eksempel: legg en skolehendelse i kalenderen
 
 Et e-postvarsel med tittelen «Ny Skolemelding» sier at en ny skolemelding er tilgjengelig, men inneholder ikke selve meldingen. En assistent kan bruke denne MCP-en til å finne og lese meldingen, og laste ned eventuelle vedlegg med detaljer om hendelsen (med `include_content: true` hvis klienten ikke kan lese lokale filer).

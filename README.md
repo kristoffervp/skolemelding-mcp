@@ -10,8 +10,6 @@ Each message lists the children it is about. If you have more than one child at 
 
 At some Oslo schools, email notifications no longer include message contents or attachments. This MCP makes it easier to retrieve them from Skolemelding and use them in an agent workflow. You are responsible for deciding whether to share school information with ChatGPT or other cloud-based or commercial AI services.
 
-**Tested only on macOS with Google Chrome. Other platforms and browsers have not been tested.**
-
 ## Example: put a school event on a calendar
 
 An email notification titled “Ny Skolemelding” says a new school message is available, but does not include its contents. An assistant can use this MCP to find and read the message, then download any attachments that contain event details (with `include_content: true` if the client cannot read local files).

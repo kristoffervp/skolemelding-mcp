@@ -10,6 +10,12 @@ Ved enkelte skoler i Osloskolen sendes ikke lenger meldingsinnhold og vedlegg p�
 
 **Kun testet på macOS med Google Chrome. Andre plattformer og nettlesere er ikke testet.**
 
+## Eksempel: legg en skolehendelse i kalenderen
+
+Et e-postvarsel med tittelen «Ny Skolemelding» sier at en ny skolemelding er tilgjengelig, men inneholder ikke selve meldingen. En assistent kan bruke denne MCP-en til å finne og lese meldingen, og laste ned eventuelle vedlegg med detaljer om hendelsen.
+
+En melding kan for eksempel si at det blir kartleggingsprøve i regning tirsdag morgen, og minne elevene på å spise frokost og møte presis. Assistenten kan da legge inn en heldagshendelse på tirsdag og ta med påminnelsene i beskrivelsen. Den bør ikke finne på et klokkeslett, og bør sjekke om hendelsen allerede finnes. Hvis økten i Skolemelding har utløpt, kan assistenten be brukeren fornye den med `npm run login` og prøve igjen etterpå.
+
 ## Installer
 
 Installer Node.js 20 eller nyere og Google Chrome. Åpne prosjektmappen i Terminal og kjør:

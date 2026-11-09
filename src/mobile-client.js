@@ -48,17 +48,21 @@ export class MobileClient {
       if (this.#auth.accessToken === sentWith) await this.#refresh();
       response = await send();
     }
-    if (!response.ok) throw new Error(`Skolemelding request failed (HTTP ${response.status}).`);
+    if (!response.ok) {
+      const error = new Error(`Skolemelding request failed (HTTP ${response.status}).`);
+      error.httpStatus = response.status;
+      throw error;
+    }
     return response;
   }
 
-  async searchPage(page, pageSize) {
+  async searchPage(page, pageSize, { search = '', unread = false, question = false, absence = false } = {}) {
     const response = await this.#request('/api/messagesearchmobile/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
-        Page: page, PageSize: pageSize, SearchTerm: '', SearchInbox: true,
-        FilterSender: null, FilterUnreadMessages: false, FilterFeedbackRequired: false,
-        FilterFeedbackIsQuestion: false, FilterIsAbsentMessage: false,
+        Page: page, PageSize: pageSize, SearchTerm: search, SearchInbox: true,
+        FilterSender: null, FilterUnreadMessages: unread, FilterFeedbackRequired: false,
+        FilterFeedbackIsQuestion: question, FilterIsAbsentMessage: absence,
         OnBehalfOf: '', AuthorUserCategory: null, FilterFavouriteMessages: false,
         SendHiddenMessages: false,
       }),
@@ -75,7 +79,14 @@ export class MobileClient {
   }
 
   async getAttachment(url) {
-    const response = await this.#request(url, { method: 'GET' });
+    let response;
+    try { response = await this.#request(url, { method: 'GET' }); }
+    catch (error) {
+      if ([403, 404, 410].includes(error.httpStatus)) {
+        throw new Error(`Skolemelding refused this attachment (HTTP ${error.httpStatus}). It may have been removed.`);
+      }
+      throw error;
+    }
     const mimeType = response.headers.get('content-type')?.split(';')[0] || 'application/octet-stream';
     if (mimeType === 'text/html') throw new Error('Attachment request returned a sign-in page.');
     const declaredSize = Number(response.headers.get('content-length'));

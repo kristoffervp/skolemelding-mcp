@@ -4,7 +4,9 @@ Norsk · [English](README.md)
 
 Les meldinger og vedlegg fra Skoleplattform Oslo med en lokal MCP-server. De fire verktøyene viser barna dine, viser meldinger, leser en melding og laster ned et vedlegg. De sender ikke svar og markerer ikke meldinger som lest.
 
-Dette er en enkel lokal versjon som kjører på din egen datamaskin. `list_messages` viser maks 100 meldinger; søk på nøkkelord eller datointervall finnes ikke ennå. Hvis du kjenner meldings-ID-en, kan `get_message` også finne eldre meldinger ved å bla gjennom opptil 1 500 innboksmeldinger. Koden har ingen fast datogrense, men hvor langt tilbake den når, avhenger av Skolemelding-tjenesten og hvor mange nyere meldinger du har.
+Dette er en enkel lokal versjon som kjører på din egen datamaskin. `list_messages` viser maks 100 meldinger. Den kan søke etter ord i meldingene og vise bare uleste meldinger, meldinger med et ja/nei-spørsmål eller fraværsmeldinger; søk på datointervall finnes ikke ennå. Hvis du kjenner meldings-ID-en, kan `get_message` også finne eldre meldinger ved å bla gjennom opptil 1 500 innboksmeldinger. Koden har ingen fast datogrense, men hvor langt tilbake den når, avhenger av Skolemelding-tjenesten og hvor mange nyere meldinger du har.
+
+Når skolen ber om et ja/nei-svar, har meldingen `question` med spørsmålsteksten. Når skolen ber foresatte bekrefte at de har lest meldingen, har den `readConfirmationRequested`. MCP-en kan ikke svare på noen av dem; bruk Skolemelding-appen til det.
 
 Hver melding viser hvilke barn den gjelder. Har du flere barn i Osloskolen, viser `list_children` navnene deres, og `list_messages` tar imot `child` (fornavn eller fullt navn) for å vise bare meldingene til det barnet. Dette er bare testet på en konto med ett barn; se [sak #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) hvis du kan hjelpe til med å teste med flere.
 
@@ -27,26 +29,15 @@ npm run login
 
 Fullfør innloggingen via ID-porten i Chrome. Kjør `npm test` for å kontrollere serveren uten å bruke kontoen din.
 
-## Legg til i ChatGPT-appen (eksempel)
+## Legg til i en KI-klient
 
-Åpne **Settings → MCP servers → Add server** og velg **STDIO**. Fyll inn:
-
-| Felt | Verdi |
-| --- | --- |
-| Command to launch | Fullstendig sti til Node.js; finn den med `command -v node` |
-| Arguments | Ett argument: fullstendig sti til prosjektets `src/server.js` |
-| Working directory | Fullstendig sti til prosjektmappen |
-| Environment variables | La stå tomt |
-
-Lagre, start ChatGPT på nytt, og skriv `/mcp` i en samtale for å kontrollere tilkoblingen. Bytt ut eksempelstiene i skjermbildet med dine egne. `~/code` i bildet er bare en plassholder for arbeidsmappen.
-
-![Oppsett av lokal MCP-server i ChatGPT med kommando, argument og arbeidsmappe](docs/chatgpt-mcp-setup.png)
-
-Dette skjermbildet viser bare ett eksempel på oppsett. Serveren kan også brukes med [Claude Desktop](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop), [Grok Build](https://docs.x.ai/build/features/mcp-servers) eller en klient med en lokal KI-modell hvis klienten støtter lokale MCP-servere via stdio. Følg oppsettet for din klient; en modell alene kan ikke koble seg til MCP. ChatGPT i nettleseren bruker ikke dette lokale oppsettet.
+Legg til serveren som en lokal MCP-server (stdio) i klienten din. Bruk `node` som kommando (den fullstendige stien fra `command -v node` hvis klienten ikke finner den) og den fullstendige stien til prosjektets `src/server.js` som eneste argument. Se oppsettet for [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp) eller [Grok Build](https://docs.x.ai/build/features/mcp-servers). KI-klienter i nettleseren kan ikke bruke en lokal server.
 
 ## Vedlegg og innstillinger
 
 `get_attachment` lagrer filen i `.data/attachments/` og returnerer sti, navn, filtype og størrelse. Selve filen er bare med i svaret fra verktøyet når det kalles med `include_content: true`; bilder returneres da som bilder og andre filer som innebygde ressurser. Klienter som ikke kan lese lokale filer, som ChatGPT-appen eller Claude Desktop, trenger `include_content: true` for å se hva et vedlegg inneholder. Klienter som kan lese lokale filer, kan åpne den lagrede filen uten.
+
+Filer som ikke er vanlige dokumenter, bilder, lyd, video eller ZIP-arkiver, lagres med `.download` lagt til i navnet, slik at de ikke åpnes eller kjøres ved et uhell. På macOS og Windows merkes lagrede vedlegg også som lastet ned fra internett, slik at systemet advarer før de åpnes.
 
 `get_message` returnerer meldingen og svarene som ren tekst; legg til `include_html: true` for også å få original-HTML. Meldinger gjenbrukes i opptil fem minutter, så `unread` kan henge etter hvis du leser en melding i appen.
 
@@ -56,9 +47,8 @@ Du kan endre standardverdiene med disse miljøvariablene i innstillingene til MC
 
 | Variabel | Standard | Formål |
 | --- | --- | --- |
-| `SKOLEMELDING_DATA_DIR` | `.data` i prosjektet | Innloggingsfiler og nettleserprofil |
+| `SKOLEMELDING_DATA_DIR` | `.data` i prosjektet | Innloggingsfil og lagrede vedlegg |
 | `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` i datamappen | Lagret innlogging |
-| `SKOLEMELDING_MOBILE_PROFILE` | `mobile-browser-profile` i datamappen | Nettleserprofil for innlogging |
 | `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` i datamappen | Hvor `get_attachment` lagrer filer |
 | `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` på Windows) | Nettleser for innlogging |
 | `SKOLEMELDING_PLAYWRIGHT_PATH` | `playwright` fra `node_modules` | Playwright-installasjonen som brukes |
@@ -69,13 +59,28 @@ Innloggingen etterligner den offisielle appen Skolemelding Foresatte. Hvis Skole
 
 ## Sikkerhet og personvern
 
-Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`. Lagrede vedlegg blir liggende i vedleggsmappen til du sletter dem.
+Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. MCP-en fjerner usynlige tegn og tekst som er skjult i meldingens HTML, og verktøybeskrivelsene ber klienten behandle meldingstekst som informasjon, ikke instruksjoner, men det kan ikke stoppe alle forsøk. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`. Lagrede vedlegg blir liggende i vedleggsmappen til du sletter dem. Stiene til vedlegg som sendes til KI-klienten, inneholder brukernavnet ditt på denne datamaskinen.
 
 Innloggingen registrerer denne datamaskinen som en enhet på Skolemelding-kontoen din, slik mobilappen gjør. Den sender navnet på operativsystemet og kjerneversjonen (for eksempel `darwin|25.6.0`), appversjonen og en tilfeldig enhets-ID som lages ved innlogging.
+
+`npm run login` bruker en ny, tom nettleserprofil og sletter den når innloggingen er ferdig, så ingen ID-porten-økt eller lagret passord blir liggende igjen. Versjoner før 0.5.1 beholdt en nettleserprofil i `.data/mobile-browser-profile/`; den mappen kan du slette.
 
 Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
 
 ## Endringslogg
+
+### 0.5.1
+- `npm run login` beholder ikke lenger en nettleserprofil; `SKOLEMELDING_MOBILE_PROFILE` er fjernet. En gammel `.data/mobile-browser-profile/`-mappe kan slettes.
+- Usynlige tegn og skjult tekst fjernes fra meldingstekst, og verktøybeskrivelsene sier at meldingstekst er informasjon, ikke instruksjoner.
+- Vedlegg av uvanlige filtyper lagres med `.download` lagt til, og lagrede vedlegg merkes som lastet ned på macOS og Windows.
+- Meldinger har ikke lenger `recipients`.
+- Bare ett søk gjennom innboksen kjører om gangen, og et søk stopper etter 90 sekunder. Feilmeldinger viser ikke lenger lokale filstier.
+- Innloggingen følger ikke lenger omdirigeringer, én feilformet melding kan ikke lenger stoppe `list_messages` eller `get_message`, og et avvist vedlegg gir en tydeligere feilmelding. Se [#12](https://github.com/kristoffervp/skolemelding-mcp/issues/12).
+- `unread_only` viser ikke lenger chatter som Skolemelding har merket som lest. Oppsettseksempelet er erstattet med lenker til oppsettet for hver klient.
+
+### 0.5.0
+- `list_messages` tar imot `search`, `unread_only`, `questions_only` og `absence_only`. Søket og filtreringen gjøres av Skolemelding.
+- Meldinger viser skolens ja/nei-spørsmål (`question`) og om skolen ber foresatte bekrefte at de har lest meldingen (`readConfirmationRequested`).
 
 ### 0.4.0 (2026-11-09)
 - Nytt verktøy, `list_children`, og et `child`-filter i `list_messages`.

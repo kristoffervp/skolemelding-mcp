@@ -10,12 +10,10 @@
 !/README.no.md
 !/package.json
 !/package-lock.json
-!/docs/
-/docs/*
-!/docs/chatgpt-mcp-setup.png
 !/src/
 /src/*
 !/src/browser.js
+!/src/files.js
 !/src/login-mobile.js
 !/src/mobile-auth.js
 !/src/mobile-client.js

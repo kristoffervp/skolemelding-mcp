@@ -10,6 +10,12 @@ At some Oslo schools, email notifications no longer include message contents or 
 
 **Tested only on macOS with Google Chrome. Other platforms and browsers have not been tested.**
 
+## Example: put a school event on a calendar
+
+An email notification titled “Ny Skolemelding” says a new school message is available, but does not include its contents. An assistant can use this MCP to find and read the message, then download any attachments that contain event details.
+
+For example, a message says there will be a maths assessment on Tuesday morning and asks pupils to eat breakfast and arrive on time. The assistant can add an all-day calendar event for Tuesday with those instructions in the description. It should not invent a start time, and it should check for an existing event before creating one. If the Skolemelding session has expired, the assistant can ask the user to refresh it with `npm run login` and retry afterward.
+
 ## Install
 
 Install Node.js 20 or later and Google Chrome. In Terminal, open this project folder and run:

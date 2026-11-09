@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { lstat, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -81,6 +81,79 @@ test('attachments are saved privately and only returned when asked', async () =>
     const withContent = await portal.getAttachment('7:0', { includeContent: true });
     assert.equal(withContent.bytes.toString(), 'file');
     assert.equal(mobile.calls.pages.length, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('cached messages expire after five minutes, and concurrent lookups share one scan', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 0 });
+  const mobile = fakeMobile(inbox(40));
+  const portal = new Portal({ mobile });
+  await Promise.all([portal.getMessage('962'), portal.getMessage('962')]);
+  assert.equal(mobile.calls.pages.length, 3);
+  await portal.getMessage('962');
+  assert.equal(mobile.calls.pages.length, 3);
+  t.mock.timers.tick(5 * 60_000);
+  await portal.getMessage('962');
+  assert.equal(mobile.calls.pages.length, 6);
+});
+
+test('threads are returned as plain text, with HTML only when requested', async () => {
+  const thread = { ThreadId: 'abc', TimeStamp: '2026-10-02T09:00:00', DisplayText: 'Reply from teacher',
+    IsSeen: false, ThreadText: '<p>See&nbsp;<b>you</b></p>', ReceiverId: null };
+  const portal = new Portal({ mobile: fakeMobile([message(7, { Threads: [thread] })]) });
+  const expected = { id: 'abc', date: '2026-10-02T09:00:00', label: 'Reply from teacher', unread: true, text: 'See you' };
+  assert.deepEqual((await portal.getMessage('7')).threads, [expected]);
+  assert.deepEqual((await portal.getMessage('7', { includeHtml: true })).threads,
+    [{ ...expected, html: '<p>See&nbsp;<b>you</b></p>' }]);
+});
+
+test('long and unusual attachment names stay valid file names', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'skolemelding-mcp-test-'));
+  const names = [`${'x'.repeat(300)}.pdf`, `${'a'.repeat(199)}\u{1F600}b.pdf`, `${'\u1200'.repeat(140)}.pdf`, 'a<b>|c?.docx. '];
+  try {
+    const portal = new Portal({
+      mobile: fakeMobile([message(7, { Attachments: names.map((name) => assets + encodeURIComponent(name)) })]),
+      attachmentDir: directory,
+    });
+    for (const [index, name] of names.entries()) {
+      const saved = await portal.getAttachment(`7:${index}`);
+      const base = saved.path.slice(directory.length + 1);
+      assert.ok(Buffer.byteLength(base) <= 220, `${name} gave ${Buffer.byteLength(base)} bytes`);
+      assert.ok(base.startsWith(`7-${index}-`));
+      assert.ok((await readdir(directory)).includes(base), 'returned path must match the file on disk');
+    }
+    const files = await readdir(directory);
+    assert.ok(files.some((file) => file.startsWith('7-0-') && file.endsWith('.pdf')));
+    assert.ok(files.includes('7-3-a_b__c_.docx'));
+    assert.equal(files.filter((file) => file.endsWith('.tmp')).length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('saving replaces existing files and symlinks instead of writing through them', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'skolemelding-mcp-test-'));
+  try {
+    const portal = new Portal({
+      mobile: fakeMobile([message(7, { Attachments: [`${assets}a.pdf`, `${assets}b.pdf`] })]),
+      attachmentDir: join(directory, 'attachments'),
+    });
+    await portal.getAttachment('7:0');
+    const loose = join(directory, 'attachments', '7-0-a.pdf');
+    await writeFile(loose, 'old', { mode: 0o644 });
+    const target = join(directory, 'outside.txt');
+    await writeFile(target, 'keep');
+    await symlink(target, join(directory, 'attachments', '7-1-b.pdf'));
+    await Promise.all([portal.getAttachment('7:0'), portal.getAttachment('7:0'), portal.getAttachment('7:1')]);
+    assert.equal(await readFile(loose, 'utf8'), 'file');
+    assert.equal(await readFile(target, 'utf8'), 'keep');
+    assert.equal((await lstat(join(directory, 'attachments', '7-1-b.pdf'))).isSymbolicLink(), false);
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(loose)).mode & 0o777, 0o600);
+      assert.equal((await stat(join(directory, 'attachments'))).mode & 0o777, 0o700);
+    }
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

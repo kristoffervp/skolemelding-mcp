@@ -19,7 +19,7 @@ export class MobileClient {
     if (!this.#refreshing) {
       this.#refreshing = refreshMobileAuth(this.#auth).then((auth) => { this.#auth = auth; })
         .catch((error) => {
-          if (error.httpStatus === 400 || error.httpStatus === 401) {
+          if ([400, 401, 403].includes(error.httpStatus)) {
             throw new Error(`Skolemelding sign-in has expired or was rejected. Run npm run login again. ${outdatedHint}`);
           }
           throw error;
@@ -41,9 +41,11 @@ export class MobileClient {
         });
       } catch { throw new Error('Could not connect to Skolemelding. Check network access and retry.'); }
     };
+    const sentWith = this.#auth.accessToken;
     let response = await send();
     if (response.status === 401) {
-      await this.#refresh();
+      // Another request may already have replaced the token; only refresh if this one used the current token.
+      if (this.#auth.accessToken === sentWith) await this.#refresh();
       response = await send();
     }
     if (!response.ok) throw new Error(`Skolemelding request failed (HTTP ${response.status}).`);

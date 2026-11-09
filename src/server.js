@@ -12,7 +12,7 @@ const tools = [
     inputSchema: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100, default: 30 } }, additionalProperties: false } },
   { name: 'get_message', description: 'Read full text and attachment metadata, including for unread messages, without changing their read status. Set include_html to also get the original HTML body.',
     inputSchema: { type: 'object', properties: { id: { type: 'string', pattern: '^\\d+$' }, include_html: { type: 'boolean', default: false } }, required: ['id'], additionalProperties: false } },
-  { name: 'get_attachment', description: 'Save a message attachment (maximum 10 MB) to a local file and return its path, name, type, and size. Set include_content to also return the file itself as an image or embedded resource.',
+  { name: 'get_attachment', description: 'Save a message attachment (maximum 10 MB) to a local file and return its path, name, type, and size. Set include_content to also return the file itself as an image or embedded resource; do this if you cannot read local files.',
     inputSchema: { type: 'object', properties: { attachment_id: { type: 'string', pattern: '^\\d+:\\d+$' }, include_content: { type: 'boolean', default: false } }, required: ['attachment_id'], additionalProperties: false } },
 ];
 

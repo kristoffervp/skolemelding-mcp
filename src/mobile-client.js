@@ -48,7 +48,11 @@ export class MobileClient {
       if (this.#auth.accessToken === sentWith) await this.#refresh();
       response = await send();
     }
-    if (!response.ok) throw new Error(`Skolemelding request failed (HTTP ${response.status}).`);
+    if (!response.ok) {
+      const error = new Error(`Skolemelding request failed (HTTP ${response.status}).`);
+      error.httpStatus = response.status;
+      throw error;
+    }
     return response;
   }
 
@@ -75,7 +79,14 @@ export class MobileClient {
   }
 
   async getAttachment(url) {
-    const response = await this.#request(url, { method: 'GET' });
+    let response;
+    try { response = await this.#request(url, { method: 'GET' }); }
+    catch (error) {
+      if ([403, 404, 410].includes(error.httpStatus)) {
+        throw new Error(`Skolemelding refused this attachment (HTTP ${error.httpStatus}). It may have been removed.`);
+      }
+      throw error;
+    }
     const mimeType = response.headers.get('content-type')?.split(';')[0] || 'application/octet-stream';
     if (mimeType === 'text/html') throw new Error('Attachment request returned a sign-in page.');
     const declaredSize = Number(response.headers.get('content-length'));

@@ -17,5 +17,4 @@ export function defaultBrowserChannel(platform = process.platform) {
 
 export const browserChannel = process.env.SKOLEMELDING_BROWSER_CHANNEL || defaultBrowserChannel();
 export const mobileAuthFilePath = resolve(process.env.SKOLEMELDING_MOBILE_AUTH_FILE || join(dataDir, 'mobile-auth.json'));
-export const mobileProfilePath = resolve(process.env.SKOLEMELDING_MOBILE_PROFILE || join(dataDir, 'mobile-browser-profile'));
 export const attachmentDirPath = resolve(process.env.SKOLEMELDING_ATTACHMENT_DIR || join(dataDir, 'attachments'));

@@ -75,6 +75,23 @@ Innloggingen registrerer denne datamaskinen som en enhet på Skolemelding-kontoe
 
 Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
 
+## Endringslogg
+
+### 0.4.0 (2026-11-09)
+- Nytt verktøy, `list_children`, og et `child`-filter i `list_messages`.
+- Hver melding viser hvilke barn den gjelder.
+- `recipients` utelates når feltet er tomt.
+
+### 0.3.0 (2026-11-09)
+- `get_attachment` lagrer filen lokalt og returnerer stien. Selve filen returneres bare med `include_content: true`.
+- `get_message` returnerer ren tekst, også for svar. HTML returneres bare med `include_html: true`.
+- Serveren håndterer flere forespørsler samtidig, og meldinger mellomlagres i fem minutter.
+- Appversjon og klient-ID-er kan settes med miljøvariabler.
+- Testene kjøres automatisk på GitHub ved hver endring.
+
+### 0.2.0 (2026-10-06)
+- Første offentlige versjon: `list_messages`, `get_message` og `get_attachment`.
+
 ## Lisens
 
 Koden og dokumentasjonen har [0BSD-lisens](LICENSE): alle kan bruke, endre og dele dem gratis til alle formål, også kommersielt, uten krav om kreditering. Lisensen gjelder ikke Skolemelding-tjenesten eller innholdet der.

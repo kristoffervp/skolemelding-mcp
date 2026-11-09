@@ -75,6 +75,23 @@ Signing in registers this computer as a device on your Skolemelding account, the
 
 The integration uses undocumented Skolemelding endpoints that may change. If your session expires, run `npm run login` again.
 
+## Changelog
+
+### 0.4.0 (2026-11-09)
+- New `list_children` tool, plus a `child` filter on `list_messages`.
+- Each message shows which children it is about.
+- `recipients` is left out when it is empty.
+
+### 0.3.0 (2026-11-09)
+- `get_attachment` saves the file locally and returns its path. The file itself is only returned with `include_content: true`.
+- `get_message` returns plain text, also for replies. The HTML is only returned with `include_html: true`.
+- The server handles several requests at once, and messages are cached for five minutes.
+- The app version and client IDs can be set with environment variables.
+- Tests run automatically on GitHub for every change.
+
+### 0.2.0 (2026-10-06)
+- First public version: `list_messages`, `get_message` and `get_attachment`.
+
 ## License
 
 The code and documentation use the [0BSD license](LICENSE): free for anyone to use, change, and share for any purpose, including commercial use, without attribution. The license does not cover the Skolemelding service or its data.

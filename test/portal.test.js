@@ -12,10 +12,15 @@ function message(id, extra = {}) {
     IsMessageSeen: false, Body: `<p>Body&nbsp;${id}</p>`, Attachments: [], ...extra };
 }
 
-function fakeMobile(messages, { bytes = Buffer.from('file'), mimeType = 'application/pdf' } = {}) {
-  const calls = { pages: [], attachments: [] };
+function fakeMobile(messages, { bytes = Buffer.from('file'), mimeType = 'application/pdf', children } = {}) {
+  const calls = { pages: [], attachments: [], children: 0 };
   return {
     calls,
+    async getChildren() {
+      calls.children++;
+      if (!children) throw new Error('Child list unavailable');
+      return children;
+    },
     async searchPage(page, pageSize) {
       calls.pages.push({ page, pageSize });
       const start = (page - 1) * pageSize;
@@ -35,7 +40,7 @@ test('listing pages through the inbox with one page size and stops on a short pa
   const listed = await new Portal({ mobile }).listMessages(100);
   assert.equal(listed.length, 20);
   assert.deepEqual(mobile.calls.pages, [{ page: 1, pageSize: 15 }, { page: 2, pageSize: 15 }]);
-  assert.deepEqual(listed[0], { id: '1000', subject: 'Subject 1000', sender: 'Teacher', recipients: '',
+  assert.deepEqual(listed[0], { id: '1000', subject: 'Subject 1000', sender: 'Teacher', children: [],
     date: '2026-10-01T08:00:00', unread: true, attachmentNames: [], preview: 'Body 1000' });
 });
 
@@ -157,4 +162,63 @@ test('saving replaces existing files and symlinks instead of writing through the
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+const twoChildren = [
+  { FirstName: 'Ada', LastName: 'Hansen', SchoolName: 'Nordpolen skole', UserName: 'ada01', SchoolCode: '1' },
+  { FirstName: 'Ola', LastName: 'Hansen', SchoolName: 'Sagene skole', UserName: 'ola02', SchoolCode: '2' },
+];
+
+test('messages name their children and can be filtered by first or full name', async () => {
+  const mobile = fakeMobile([
+    message(3, { OnBehalfOf: 'ada01', OnBehalfOfList: ['ada01'] }),
+    message(2, { OnBehalfOf: 'ola02', OnBehalfOfList: ['ola02'] }),
+    message(1, { OnBehalfOf: 'ada01', OnBehalfOfList: ['ada01', 'ola02'] }),
+  ], { children: twoChildren });
+  const portal = new Portal({ mobile });
+  assert.deepEqual(await portal.listChildren(), [
+    { name: 'Ada Hansen', school: 'Nordpolen skole' }, { name: 'Ola Hansen', school: 'Sagene skole' },
+  ]);
+  const all = await portal.listMessages(30);
+  assert.deepEqual(all.map(({ id, children }) => [id, children]), [
+    ['3', ['Ada Hansen']], ['2', ['Ola Hansen']], ['1', ['Ada Hansen', 'Ola Hansen']],
+  ]);
+  assert.equal('recipients' in all[0], false);
+  assert.deepEqual((await portal.listMessages(30, { child: 'ola' })).map(({ id }) => id), ['2', '1']);
+  assert.deepEqual((await portal.listMessages(30, { child: ' Ada Hansen ' })).map(({ id }) => id), ['3', '1']);
+  assert.deepEqual((await portal.getMessage('1')).children, ['Ada Hansen', 'Ola Hansen']);
+  await assert.rejects(portal.listMessages(30, { child: 'Kari' }), /No child named "Kari".*Ada Hansen, Ola Hansen/);
+  assert.equal(mobile.calls.children, 1, 'the child list is cached');
+});
+
+test('the child filter counts only matching messages towards the limit', async () => {
+  const messages = inbox(40).map((item, index) => ({ ...item, OnBehalfOf: index % 2 ? 'ola02' : 'ada01' }));
+  const mobile = fakeMobile(messages, { children: twoChildren });
+  const listed = await new Portal({ mobile }).listMessages(10, { child: 'Ola' });
+  assert.equal(listed.length, 10);
+  assert.ok(listed.every(({ children }) => children[0] === 'Ola Hansen'));
+  assert.equal(mobile.calls.pages.length, 2);
+});
+
+test('a child with a middle name matches the given name, all first names, or the full name', async () => {
+  const children = [{ FirstName: 'Ada Marie', LastName: 'Hansen', SchoolName: 'X', UserName: 'ada01' }];
+  const portal = new Portal({ mobile: fakeMobile([message(1, { OnBehalfOf: 'ada01' })], { children }) });
+  for (const query of ['Ada', 'ada marie', 'Ada Hansen', 'ADA  MARIE HANSEN']) {
+    assert.equal((await portal.listMessages(30, { child: query })).length, 1, query);
+  }
+  assert.deepEqual((await portal.listMessages(30))[0].children, ['Ada Marie Hansen']);
+  await assert.rejects(portal.listMessages(30, { child: 'Marie' }), /No child named/);
+});
+
+test('an ambiguous first name asks for the full name', async () => {
+  const children = [...twoChildren, { FirstName: 'Ada', LastName: 'Berg', SchoolName: 'X', UserName: 'ada03' }];
+  const portal = new Portal({ mobile: fakeMobile([message(1)], { children }) });
+  await assert.rejects(portal.listMessages(30, { child: 'ada' }), /more than one child/);
+  assert.equal((await portal.listMessages(30, { child: 'Ada Berg' })).length, 0);
+});
+
+test('listing still works when the child list is unavailable', async () => {
+  const portal = new Portal({ mobile: fakeMobile([message(1, { OnBehalfOf: 'ada01' })]) });
+  assert.deepEqual((await portal.listMessages(30))[0].children, []);
+  await assert.rejects(portal.listMessages(30, { child: 'Ada' }), /Child list unavailable/);
 });

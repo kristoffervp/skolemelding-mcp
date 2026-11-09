@@ -68,6 +68,12 @@ export class MobileClient {
     return payload;
   }
 
+  async getChildren() {
+    const response = await this.#request('/api/MyProfile/GetChildInfo', { method: 'GET', headers: { Accept: 'application/json' } });
+    const payload = await response.json();
+    return Array.isArray(payload?.ParentChildOptions) ? payload.ParentChildOptions : [];
+  }
+
   async getAttachment(url) {
     const response = await this.#request(url, { method: 'GET' });
     const mimeType = response.headers.get('content-type')?.split(';')[0] || 'application/octet-stream';

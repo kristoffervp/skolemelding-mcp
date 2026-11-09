@@ -10,6 +10,12 @@ Ved enkelte skoler i Osloskolen sendes ikke lenger meldingsinnhold og vedlegg p�
 
 **Kun testet på macOS med Google Chrome. Andre plattformer og nettlesere er ikke testet.**
 
+## Eksempel: legg en skolehendelse i kalenderen
+
+Et e-postvarsel med tittelen «Ny Skolemelding» sier at en ny skolemelding er tilgjengelig, men inneholder ikke selve meldingen. En assistent kan bruke denne MCP-en til å finne og lese meldingen, og laste ned eventuelle vedlegg med detaljer om hendelsen (med `include_content: true` hvis klienten ikke kan lese lokale filer).
+
+En melding kan for eksempel si at det blir kartleggingsprøve i regning tirsdag morgen, og minne elevene på å spise frokost og møte presis. Assistenten kan da legge inn en heldagshendelse på tirsdag og ta med påminnelsene i beskrivelsen. Den bør ikke finne på et klokkeslett, og bør sjekke om hendelsen allerede finnes. Hvis økten i Skolemelding har utløpt, kan assistenten be brukeren fornye den med `npm run login` og prøve igjen etterpå.
+
 ## Installer
 
 Installer Node.js 20 eller nyere og Google Chrome. Åpne prosjektmappen i Terminal og kjør:
@@ -38,9 +44,34 @@ Lagre, start ChatGPT på nytt, og skriv `/mcp` i en samtale for å kontrollere t
 
 Dette skjermbildet viser bare ett eksempel på oppsett. Serveren kan også brukes med [Claude Desktop](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop), [Grok Build](https://docs.x.ai/build/features/mcp-servers) eller en klient med en lokal KI-modell hvis klienten støtter lokale MCP-servere via stdio. Følg oppsettet for din klient; en modell alene kan ikke koble seg til MCP. ChatGPT i nettleseren bruker ikke dette lokale oppsettet.
 
+## Vedlegg og innstillinger
+
+`get_attachment` lagrer filen i `.data/attachments/` og returnerer sti, navn, filtype og størrelse. Selve filen er bare med i svaret fra verktøyet når det kalles med `include_content: true`; bilder returneres da som bilder og andre filer som innebygde ressurser. Klienter som ikke kan lese lokale filer, som ChatGPT-appen eller Claude Desktop, trenger `include_content: true` for å se hva et vedlegg inneholder. Klienter som kan lese lokale filer, kan åpne den lagrede filen uten.
+
+`get_message` returnerer meldingen og svarene som ren tekst; legg til `include_html: true` for også å få original-HTML. Meldinger gjenbrukes i opptil fem minutter, så `unread` kan henge etter hvis du leser en melding i appen.
+
+Versjon 0.3.0 endret disse standardene. Tidligere versjoner returnerte alltid vedlegg som `base64` og meldinger med `bodyHtml`.
+
+Du kan endre standardverdiene med disse miljøvariablene i innstillingene til MCP-klienten (og i Terminal for `npm run login`):
+
+| Variabel | Standard | Formål |
+| --- | --- | --- |
+| `SKOLEMELDING_DATA_DIR` | `.data` i prosjektet | Innloggingsfiler og nettleserprofil |
+| `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` i datamappen | Lagret innlogging |
+| `SKOLEMELDING_MOBILE_PROFILE` | `mobile-browser-profile` i datamappen | Nettleserprofil for innlogging |
+| `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` i datamappen | Hvor `get_attachment` lagrer filer |
+| `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` på Windows) | Nettleser for innlogging |
+| `SKOLEMELDING_PLAYWRIGHT_PATH` | `playwright` fra `node_modules` | Playwright-installasjonen som brukes |
+| `SKOLEMELDING_APP_VERSION` | `6.0.6` | Appversjonen som sendes til Skolemelding |
+| `SKOLEMELDING_OIDC_CLIENT_ID`, `SKOLEMELDING_TOKEN_CLIENT_ID` | Verdier fra den offisielle appen | Klient-ID-er for innlogging |
+
+Innloggingen etterligner den offisielle appen Skolemelding Foresatte. Hvis Skolemelding begynner å avvise innlogging eller fornyelse etter en appoppdatering, sett `SKOLEMELDING_APP_VERSION` til versjonen som står i app-butikken nå, og kjør `npm run login` på nytt.
+
 ## Sikkerhet og personvern
 
-Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`.
+Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`. Lagrede vedlegg blir liggende i vedleggsmappen til du sletter dem.
+
+Innloggingen registrerer denne datamaskinen som en enhet på Skolemelding-kontoen din, slik mobilappen gjør. Den sender navnet på operativsystemet og kjerneversjonen (for eksempel `darwin|25.6.0`), appversjonen og en tilfeldig enhets-ID som lages ved innlogging.
 
 Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
 

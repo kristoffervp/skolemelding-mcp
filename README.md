@@ -10,6 +10,12 @@ At some Oslo schools, email notifications no longer include message contents or 
 
 **Tested only on macOS with Google Chrome. Other platforms and browsers have not been tested.**
 
+## Example: put a school event on a calendar
+
+An email notification titled “Ny Skolemelding” says a new school message is available, but does not include its contents. An assistant can use this MCP to find and read the message, then download any attachments that contain event details (with `include_content: true` if the client cannot read local files).
+
+For example, a message says there will be a maths assessment on Tuesday morning and asks pupils to eat breakfast and arrive on time. The assistant can add an all-day calendar event for Tuesday with those instructions in the description. It should not invent a start time, and it should check for an existing event before creating one. If the Skolemelding session has expired, the assistant can ask the user to refresh it with `npm run login` and retry afterward.
+
 ## Install
 
 Install Node.js 20 or later and Google Chrome. In Terminal, open this project folder and run:
@@ -38,9 +44,34 @@ Save, restart ChatGPT, then type `/mcp` in a chat to check the connection. Repla
 
 This screenshot shows just one setup example. The server can also work with [Claude Desktop](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop), [Grok Build](https://docs.x.ai/build/features/mcp-servers), or a client using a local AI model if that client supports local stdio MCP servers. Follow each client's setup instructions; a model alone cannot connect to MCP. ChatGPT in a web browser does not use this local setup.
 
+## Attachments and configuration
+
+`get_attachment` saves the file in `.data/attachments/` and returns its path, name, type, and size. The tool result only contains the file itself when the tool is called with `include_content: true`; images are then returned as images and other files as embedded resources. Clients that cannot read local files, such as the ChatGPT desktop app or Claude Desktop, need `include_content: true` to see what an attachment says. Clients that can read local files can open the saved file without it.
+
+`get_message` returns the message and its replies as plain text; add `include_html: true` to also get the original HTML. Messages are reused for up to five minutes, so `unread` can lag behind after you read a message in the app.
+
+Version 0.3.0 changed these defaults. Earlier versions always returned attachments as `base64` and messages with `bodyHtml`.
+
+To change the defaults, set these environment variables in the MCP client settings (and in Terminal for `npm run login`):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SKOLEMELDING_DATA_DIR` | `.data` in this project | Sign-in files and browser profile |
+| `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` in the data folder | Saved sign-in |
+| `SKOLEMELDING_MOBILE_PROFILE` | `mobile-browser-profile` in the data folder | Browser profile used for sign-in |
+| `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` in the data folder | Where `get_attachment` saves files |
+| `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` on Windows) | Browser used for sign-in |
+| `SKOLEMELDING_PLAYWRIGHT_PATH` | `playwright` from `node_modules` | Playwright installation to use |
+| `SKOLEMELDING_APP_VERSION` | `6.0.6` | App version sent to Skolemelding |
+| `SKOLEMELDING_OIDC_CLIENT_ID`, `SKOLEMELDING_TOKEN_CLIENT_ID` | Values from the official app | Sign-in client IDs |
+
+The sign-in imitates the official Skolemelding Foresatte app. If Skolemelding starts rejecting sign-ins or refreshes after an app update, set `SKOLEMELDING_APP_VERSION` to the version in the current app store listing and run `npm run login` again.
+
 ## Security and privacy
 
-This MCP runs locally and does not open a network port. An AI client you connect can still retrieve school messages and attachments from your account. Content used with a cloud AI service may be sent to that service. Messages may also contain text intended to influence the agent. Use clients you trust, review tool calls, and never share the sign-in files in `.data/`.
+This MCP runs locally and does not open a network port. An AI client you connect can still retrieve school messages and attachments from your account. Content used with a cloud AI service may be sent to that service. Messages may also contain text intended to influence the agent. Use clients you trust, review tool calls, and never share the sign-in files in `.data/`. Saved attachments stay in the attachment folder until you delete them.
+
+Signing in registers this computer as a device on your Skolemelding account, the same way the mobile app does. It sends the operating system name and kernel version (for example `darwin|25.6.0`), the app version, and a random device ID created at sign-in.
 
 The integration uses undocumented Skolemelding endpoints that may change. If your session expires, run `npm run login` again.
 

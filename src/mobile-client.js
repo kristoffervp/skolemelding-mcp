@@ -1,4 +1,4 @@
-import { readMobileAuth, refreshMobileAuth } from './mobile-auth.js';
+import { outdatedHint, readMobileAuth, refreshMobileAuth } from './mobile-auth.js';
 
 const origin = 'https://portal.skoleplattform.no';
 
@@ -7,15 +7,20 @@ export class MobileClient {
   #refreshing;
 
   async open() {
-    if (!this.#auth) this.#auth = await readMobileAuth();
+    if (this.#auth) return;
+    try { this.#auth = await readMobileAuth(); }
+    catch (error) {
+      if (error.code === 'ENOENT') throw new Error('Not signed in to Skolemelding. Run npm run login first.');
+      throw error;
+    }
   }
 
   async #refresh() {
     if (!this.#refreshing) {
       this.#refreshing = refreshMobileAuth(this.#auth).then((auth) => { this.#auth = auth; })
         .catch((error) => {
-          if (error.httpStatus === 400 || error.httpStatus === 401) {
-            throw new Error('Skolemelding mobile sign-in has expired. Run npm run login:mobile again.');
+          if ([400, 401, 403].includes(error.httpStatus)) {
+            throw new Error(`Skolemelding sign-in has expired or was rejected. Run npm run login again. ${outdatedHint}`);
           }
           throw error;
         })
@@ -36,16 +41,18 @@ export class MobileClient {
         });
       } catch { throw new Error('Could not connect to Skolemelding. Check network access and retry.'); }
     };
+    const sentWith = this.#auth.accessToken;
     let response = await send();
     if (response.status === 401) {
-      await this.#refresh();
+      // Another request may already have replaced the token; only refresh if this one used the current token.
+      if (this.#auth.accessToken === sentWith) await this.#refresh();
       response = await send();
     }
     if (!response.ok) throw new Error(`Skolemelding request failed (HTTP ${response.status}).`);
     return response;
   }
 
-  async searchPage(page, pageSize = 15) {
+  async searchPage(page, pageSize) {
     const response = await this.#request('/api/messagesearchmobile/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({

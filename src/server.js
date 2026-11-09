@@ -1,22 +1,39 @@
 #!/usr/bin/env node
 import { createInterface } from 'node:readline';
+import { pathToFileURL } from 'node:url';
 import { Portal } from './portal.js';
 
 const portal = new Portal();
-const serverInfo = { name: 'skolemelding-mcp', version: '0.2.0' };
+const serverInfo = { name: 'skolemelding-mcp', version: '0.3.0' };
 const supportedVersions = new Set(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
+const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const tools = [
   { name: 'list_messages', description: 'List received Skolemelding messages with previews, unread state, and attachment names.',
     inputSchema: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100, default: 30 } }, additionalProperties: false } },
-  { name: 'get_message', description: 'Read full text and attachment metadata, including for unread messages, without changing their read status.',
-    inputSchema: { type: 'object', properties: { id: { type: 'string', pattern: '^\\d+$' } }, required: ['id'], additionalProperties: false } },
-  { name: 'get_attachment', description: 'Get base64 bytes of a message attachment (maximum 10 MB).',
-    inputSchema: { type: 'object', properties: { attachment_id: { type: 'string', pattern: '^\\d+:\\d+$' } }, required: ['attachment_id'], additionalProperties: false } },
+  { name: 'get_message', description: 'Read full text and attachment metadata, including for unread messages, without changing their read status. Set include_html to also get the original HTML body.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string', pattern: '^\\d+$' }, include_html: { type: 'boolean', default: false } }, required: ['id'], additionalProperties: false } },
+  { name: 'get_attachment', description: 'Save a message attachment (maximum 10 MB) to a local file and return its path, name, type, and size. Set include_content to also return the file itself as an image or embedded resource; do this if you cannot read local files.',
+    inputSchema: { type: 'object', properties: { attachment_id: { type: 'string', pattern: '^\\d+:\\d+$' }, include_content: { type: 'boolean', default: false } }, required: ['attachment_id'], additionalProperties: false } },
 ];
 
 function send(message) { process.stdout.write(JSON.stringify(message) + '\n'); }
 function result(id, value) { send({ jsonrpc: '2.0', id, result: value }); }
 function error(id, code, message) { send({ jsonrpc: '2.0', id, error: { code, message } }); }
+function json(value) { return [{ type: 'text', text: JSON.stringify(value) }]; }
+
+const handlers = {
+  list_messages: async (args) => json(await portal.listMessages(args.limit)),
+  get_message: async (args) => json(await portal.getMessage(args.id, { includeHtml: args.include_html === true })),
+  get_attachment: async (args) => {
+    const { bytes, ...info } = await portal.getAttachment(args.attachment_id, { includeContent: args.include_content === true });
+    const content = json(info);
+    if (!bytes) return content;
+    const data = bytes.toString('base64');
+    if (imageTypes.has(info.mimeType)) content.push({ type: 'image', data, mimeType: info.mimeType });
+    else content.push({ type: 'resource', resource: { uri: pathToFileURL(info.path).href, mimeType: info.mimeType, blob: data } });
+    return content;
+  },
+};
 
 async function handle(request) {
   if (!request || request.jsonrpc !== '2.0' || typeof request.method !== 'string') {
@@ -35,12 +52,9 @@ async function handle(request) {
       result(id, { tools });
     } else if (method === 'tools/call') {
       const args = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
-      let value;
-      if (params.name === 'list_messages') value = await portal.listMessages(args.limit);
-      else if (params.name === 'get_message') value = await portal.getMessage(args.id);
-      else if (params.name === 'get_attachment') value = await portal.getAttachment(args.attachment_id);
-      else return error(id, -32602, `Unknown tool: ${params.name}`);
-      result(id, { content: [{ type: 'text', text: JSON.stringify(value) }] });
+      const handler = Object.hasOwn(handlers, params.name) ? handlers[params.name] : undefined;
+      if (!handler) return error(id, -32602, `Unknown tool: ${params.name}`);
+      result(id, { content: await handler(args) });
     } else {
       error(id, -32601, `Method not found: ${method}`);
     }
@@ -49,11 +63,15 @@ async function handle(request) {
   }
 }
 
+// Requests run concurrently so a slow inbox scan does not block ping or other calls.
+const pending = new Set();
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
 for await (const line of input) {
   let request;
   try { request = JSON.parse(line); }
   catch { error(null, -32700, 'Invalid JSON'); continue; }
-  await handle(request);
+  const task = handle(request).finally(() => pending.delete(task));
+  pending.add(task);
 }
+await Promise.allSettled(pending);
 await portal.close();

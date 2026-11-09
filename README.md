@@ -2,9 +2,11 @@
 
 English · [Norsk](README.no.md)
 
-Read Skoleplattform Oslo messages and attachments through a local MCP server. Its three tools list messages, read a message, and download an attachment. They do not send replies or mark messages as read.
+Read Skoleplattform Oslo messages and attachments through a local MCP server. Its four tools list your children, list messages, read a message, and download an attachment. They do not send replies or mark messages as read.
 
 This is a simple local version that runs on your own computer. `list_messages` shows at most 100 messages; there is no keyword or date-range search yet. If you know a message ID, `get_message` can also find older messages by scanning up to 1,500 inbox entries. There is no fixed date cutoff in this code, but how far back it can reach depends on the Skolemelding service and how many newer messages you have.
+
+Each message lists the children it is about. If you have more than one child at an Oslo school, `list_children` shows their names, and `list_messages` takes a `child` (first name or full name) to list only that child's messages. This has only been tested on an account with one child; see [issue #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) if you can help test it with several.
 
 At some Oslo schools, email notifications no longer include message contents or attachments. This MCP makes it easier to retrieve them from Skolemelding and use them in an agent workflow. You are responsible for deciding whether to share school information with ChatGPT or other cloud-based or commercial AI services.
 

@@ -65,6 +65,7 @@ export class Portal {
   #attachmentDir;
   #cache = new Map();
   #lookups = new Map();
+  #children;
 
   constructor({ mobile = new MobileClient(), attachmentDir = attachmentDirPath } = {}) {
     this.#mobile = mobile;
@@ -79,14 +80,14 @@ export class Portal {
     for (const message of messages) this.#cache.set(String(message.Id), { message, at: now });
   }
 
-  async #search({ id, limit = 30 } = {}) {
+  async #search({ id, limit = 30, matches = () => true } = {}) {
     const messages = [];
     for (let page = 1; page <= maxPages; page++) {
       const payload = await this.#mobile.searchPage(page, pageSize);
       messages.push(...payload.Result);
       this.#remember(payload.Result);
       if (id && messages.some((message) => String(message.Id) === id)) break;
-      if (!id && messages.length >= limit) break;
+      if (!id && messages.filter(matches).length >= limit) break;
       if (messages.length >= Number(payload.TotalMatching) || payload.Result.length < pageSize) break;
     }
     return messages;
@@ -103,6 +104,35 @@ export class Portal {
     return message;
   }
 
+  async #childList() {
+    if (this.#children && Date.now() - this.#children.at < cacheTtl) return this.#children.list;
+    const list = (await this.#mobile.getChildren())
+      .filter((child) => child && child.UserName)
+      .map((child) => {
+        const firstNames = String(child.FirstName || '').trim();
+        const lastName = String(child.LastName || '').trim();
+        const givenName = firstNames.split(/\s+/)[0];
+        const name = [firstNames, lastName].filter(Boolean).join(' ');
+        // FirstName can include middle names, so also accept the first given name with or without the last name.
+        const aliases = [name, firstNames, givenName, [givenName, lastName].filter(Boolean).join(' ')]
+          .filter(Boolean).map((alias) => alias.toLocaleLowerCase('nb'));
+        return { userName: String(child.UserName), name, school: child.SchoolName || '', aliases };
+      });
+    this.#children = { list, at: Date.now() };
+    return list;
+  }
+
+  // Message annotations should not fail just because the child list is unavailable.
+  async #childListOrEmpty() {
+    try { return await this.#childList(); }
+    catch { return []; }
+  }
+
+  #childUserNames(message) {
+    const names = [message.OnBehalfOf, ...(Array.isArray(message.OnBehalfOfList) ? message.OnBehalfOfList : [])];
+    return [...new Set(names.filter((name) => typeof name === 'string' && name))];
+  }
+
   #thread(thread, includeHtml) {
     const result = { id: String(thread.ThreadId ?? ''), date: thread.TimeStamp || '', label: thread.DisplayText || '',
       unread: thread.IsSeen === false, text: plainText(thread.ThreadText) };
@@ -110,7 +140,7 @@ export class Portal {
     return result;
   }
 
-  #normalize(message, { full = false, includeHtml = false } = {}) {
+  #normalize(message, { full = false, includeHtml = false, children = [] } = {}) {
     const id = String(message.Id);
     const attachments = (Array.isArray(message.Attachments) ? message.Attachments : [])
       .map((path, index) => attachmentInfo(path, id, index)).filter(Boolean);
@@ -118,11 +148,14 @@ export class Portal {
       id,
       subject: message.Header || '',
       sender: message.From || '',
-      recipients: message.To || message.Receiver || '',
+      children: this.#childUserNames(message)
+        .map((userName) => children.find((child) => child.userName === userName)?.name).filter(Boolean),
       date: message.Timestamp || '',
       unread: message.IsMessageSeen === false,
       attachmentNames: attachments.map(({ name }) => name),
     };
+    const recipients = message.To || message.Receiver;
+    if (recipients) result.recipients = recipients;
     if (full) {
       result.bodyText = plainText(message.Body);
       if (includeHtml) result.bodyHtml = message.Body || '';
@@ -134,15 +167,39 @@ export class Portal {
     return result;
   }
 
-  async listMessages(limit = 30) {
+  async listChildren() {
+    return (await this.#childList()).map(({ name, school }) => ({ name, school }));
+  }
+
+  async #findChild(query) {
+    const children = await this.#childList();
+    const wanted = query.trim().replace(/\s+/g, ' ').toLocaleLowerCase('nb');
+    const found = children.filter((child) => child.aliases.includes(wanted));
+    const known = children.map(({ name }) => name).join(', ') || 'none';
+    if (found.length === 0) throw new Error(`No child named "${query}" on this account. Children: ${known}.`);
+    if (found.length > 1) throw new Error(`"${query}" matches more than one child. Use the full name: ${known}.`);
+    return { child: found[0], children };
+  }
+
+  async listMessages(limit = 30, { child } = {}) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Limit must be an integer from 1 to 100.');
-    const messages = (await this.#search({ limit })).slice(0, limit);
-    return messages.map((message) => this.#normalize(message));
+    if (child !== undefined && (typeof child !== 'string' || !child.trim())) throw new Error('Child must be a non-empty name.');
+    let children;
+    let matches = () => true;
+    if (child === undefined) children = await this.#childListOrEmpty();
+    else {
+      const found = await this.#findChild(child);
+      children = found.children;
+      matches = (message) => this.#childUserNames(message).includes(found.child.userName);
+    }
+    const messages = (await this.#search({ limit, matches })).filter(matches).slice(0, limit);
+    return messages.map((message) => this.#normalize(message, { children }));
   }
 
   async getMessage(id, { includeHtml = false } = {}) {
     if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new Error('Invalid message ID.');
-    return this.#normalize(await this.#find(id), { full: true, includeHtml });
+    const [message, children] = await Promise.all([this.#find(id), this.#childListOrEmpty()]);
+    return this.#normalize(message, { full: true, includeHtml, children });
   }
 
   async getAttachment(attachmentId, { includeContent = false } = {}) {

@@ -12,8 +12,11 @@ globalThis.fetch = async (url) => {
   const { pathname } = new URL(url);
   if (pathname === '/api/messagesearchmobile/') {
     await new Promise((resolve) => setTimeout(resolve, 300));
-    return Response.json({ TotalMatching: 1, Result: [{ Id: 7, Header: 'Hi', Body: '<p>Hello</p>',
+    return Response.json({ TotalMatching: 1, Result: [{ Id: 7, Header: 'Hi', Body: '<p>Hello</p>', OnBehalfOf: 'ada01',
       Attachments: ['/globalassets/attachments/plan.pdf', '/globalassets/attachments/photo.png'] }] });
+  }
+  if (pathname === '/api/MyProfile/GetChildInfo') {
+    return Response.json({ FirstName: 'Parent', ParentChildOptions: [{ FirstName: 'Ada', LastName: 'Hansen', SchoolName: 'Nordpolen skole', UserName: 'ada01' }] });
   }
   if (pathname.startsWith('/globalassets/attachments/')) {
     return new Response('bytes', { headers: { 'Content-Type': pathname.endsWith('.png') ? 'image/png' : 'application/pdf' } });
@@ -46,7 +49,7 @@ function startServer({ env = {}, nodeArgs = [] } = {}) {
   return { call, order, stop };
 }
 
-test('MCP exposes only the three read tools and negotiates a protocol version', async () => {
+test('MCP exposes only the four read tools and negotiates a protocol version', async () => {
   const server = startServer({
     env: { SKOLEMELDING_MOBILE_AUTH_FILE: join(tmpdir(), `skolemelding-mcp-missing-${process.pid}.json`) },
   });
@@ -55,9 +58,10 @@ test('MCP exposes only the three read tools and negotiates a protocol version', 
     assert.equal(initialized.result.protocolVersion, '2024-11-05');
     const listed = await server.call('tools/list');
     assert.deepEqual(listed.result.tools.map(({ name }) => name), [
-      'list_messages', 'get_message', 'get_attachment',
+      'list_children', 'list_messages', 'get_message', 'get_attachment',
     ]);
-    const [, getMessage, getAttachment] = listed.result.tools;
+    const [, listMessages, getMessage, getAttachment] = listed.result.tools;
+    assert.equal(listMessages.inputSchema.properties.child.type, 'string');
     assert.equal(getMessage.inputSchema.properties.include_html.type, 'boolean');
     assert.equal(getAttachment.inputSchema.properties.include_content.type, 'boolean');
     const signedOut = await server.call('tools/call', { name: 'list_messages', arguments: {} });
@@ -85,7 +89,11 @@ test('slow calls do not block ping, and attachment content uses MCP content type
       server.call('tools/call', { name: 'list_messages', arguments: {} }), server.call('ping'),
     ]);
     assert.deepEqual(server.order.slice(1), [3, 2], 'ping should answer before the slow list');
-    assert.equal(JSON.parse(listed.result.content[0].text)[0].id, '7');
+    assert.deepEqual(JSON.parse(listed.result.content[0].text)[0].children, ['Ada Hansen']);
+    const children = await server.call('tools/call', { name: 'list_children', arguments: {} });
+    assert.deepEqual(JSON.parse(children.result.content[0].text), [{ name: 'Ada Hansen', school: 'Nordpolen skole' }]);
+    const filtered = await server.call('tools/call', { name: 'list_messages', arguments: { child: 'ada' } });
+    assert.equal(JSON.parse(filtered.result.content[0].text).length, 1);
 
     const pathOnly = await server.call('tools/call', { name: 'get_attachment', arguments: { attachment_id: '7:0' } });
     assert.equal(pathOnly.result.content.length, 1);

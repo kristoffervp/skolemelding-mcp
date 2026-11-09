@@ -80,10 +80,10 @@ export class Portal {
     for (const message of messages) this.#cache.set(String(message.Id), { message, at: now });
   }
 
-  async #search({ id, limit = 30, matches = () => true } = {}) {
+  async #search({ id, limit = 30, matches = () => true, filters = {} } = {}) {
     const messages = [];
     for (let page = 1; page <= maxPages; page++) {
-      const payload = await this.#mobile.searchPage(page, pageSize);
+      const payload = await this.#mobile.searchPage(page, pageSize, filters);
       messages.push(...payload.Result);
       this.#remember(payload.Result);
       if (id && messages.some((message) => String(message.Id) === id)) break;
@@ -154,6 +154,9 @@ export class Portal {
       unread: message.IsMessageSeen === false,
       attachmentNames: attachments.map(({ name }) => name),
     };
+    // The school asks parents to answer a yes/no question or to confirm that they have read the message.
+    if (message.IsFeedBackQuestion) result.question = plainText(message.QuestionText);
+    if (message.IsFeedBackReadConfirmation) result.readConfirmationRequested = true;
     const recipients = message.To || message.Receiver;
     if (recipients) result.recipients = recipients;
     if (full) {
@@ -181,9 +184,16 @@ export class Portal {
     return { child: found[0], children };
   }
 
-  async listMessages(limit = 30, { child } = {}) {
+  async listMessages(limit = 30, { child, search, unreadOnly = false, questionsOnly = false, absenceOnly = false } = {}) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Limit must be an integer from 1 to 100.');
     if (child !== undefined && (typeof child !== 'string' || !child.trim())) throw new Error('Child must be a non-empty name.');
+    if (search !== undefined && (typeof search !== 'string' || !search.trim() || search.length > 100)) {
+      throw new Error('Search must be non-empty text of at most 100 characters.');
+    }
+    for (const flag of [unreadOnly, questionsOnly, absenceOnly]) {
+      if (typeof flag !== 'boolean') throw new Error('Filters must be true or false.');
+    }
+    const filters = { search: search?.trim() ?? '', unread: unreadOnly, question: questionsOnly, absence: absenceOnly };
     let children;
     let matches = () => true;
     if (child === undefined) children = await this.#childListOrEmpty();
@@ -192,7 +202,7 @@ export class Portal {
       children = found.children;
       matches = (message) => this.#childUserNames(message).includes(found.child.userName);
     }
-    const messages = (await this.#search({ limit, matches })).filter(matches).slice(0, limit);
+    const messages = (await this.#search({ limit, matches, filters })).filter(matches).slice(0, limit);
     return messages.map((message) => this.#normalize(message, { children }));
   }
 

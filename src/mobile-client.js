@@ -52,13 +52,13 @@ export class MobileClient {
     return response;
   }
 
-  async searchPage(page, pageSize) {
+  async searchPage(page, pageSize, { search = '', unread = false, question = false, absence = false } = {}) {
     const response = await this.#request('/api/messagesearchmobile/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
-        Page: page, PageSize: pageSize, SearchTerm: '', SearchInbox: true,
-        FilterSender: null, FilterUnreadMessages: false, FilterFeedbackRequired: false,
-        FilterFeedbackIsQuestion: false, FilterIsAbsentMessage: false,
+        Page: page, PageSize: pageSize, SearchTerm: search, SearchInbox: true,
+        FilterSender: null, FilterUnreadMessages: unread, FilterFeedbackRequired: false,
+        FilterFeedbackIsQuestion: question, FilterIsAbsentMessage: absence,
         OnBehalfOf: '', AuthorUserCategory: null, FilterFavouriteMessages: false,
         SendHiddenMessages: false,
       }),

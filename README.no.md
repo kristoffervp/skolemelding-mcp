@@ -4,7 +4,9 @@ Norsk · [English](README.md)
 
 Les meldinger og vedlegg fra Skoleplattform Oslo med en lokal MCP-server. De fire verktøyene viser barna dine, viser meldinger, leser en melding og laster ned et vedlegg. De sender ikke svar og markerer ikke meldinger som lest.
 
-Dette er en enkel lokal versjon som kjører på din egen datamaskin. `list_messages` viser maks 100 meldinger; søk på nøkkelord eller datointervall finnes ikke ennå. Hvis du kjenner meldings-ID-en, kan `get_message` også finne eldre meldinger ved å bla gjennom opptil 1 500 innboksmeldinger. Koden har ingen fast datogrense, men hvor langt tilbake den når, avhenger av Skolemelding-tjenesten og hvor mange nyere meldinger du har.
+Dette er en enkel lokal versjon som kjører på din egen datamaskin. `list_messages` viser maks 100 meldinger. Den kan søke etter ord i meldingene og vise bare uleste meldinger, meldinger med et ja/nei-spørsmål eller fraværsmeldinger; søk på datointervall finnes ikke ennå. Hvis du kjenner meldings-ID-en, kan `get_message` også finne eldre meldinger ved å bla gjennom opptil 1 500 innboksmeldinger. Koden har ingen fast datogrense, men hvor langt tilbake den når, avhenger av Skolemelding-tjenesten og hvor mange nyere meldinger du har.
+
+Når skolen ber om et ja/nei-svar, har meldingen `question` med spørsmålsteksten. Når skolen ber foresatte bekrefte at de har lest meldingen, har den `readConfirmationRequested`. MCP-en kan ikke svare på noen av dem; bruk Skolemelding-appen til det.
 
 Hver melding viser hvilke barn den gjelder. Har du flere barn i Osloskolen, viser `list_children` navnene deres, og `list_messages` tar imot `child` (fornavn eller fullt navn) for å vise bare meldingene til det barnet. Dette er bare testet på en konto med ett barn; se [sak #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) hvis du kan hjelpe til med å teste med flere.
 
@@ -76,6 +78,10 @@ Innloggingen registrerer denne datamaskinen som en enhet på Skolemelding-kontoe
 Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
 
 ## Endringslogg
+
+### 0.5.0
+- `list_messages` tar imot `search`, `unread_only`, `questions_only` og `absence_only`. Søket og filtreringen gjøres av Skolemelding.
+- Meldinger viser skolens ja/nei-spørsmål (`question`) og om skolen ber foresatte bekrefte at de har lest meldingen (`readConfirmationRequested`).
 
 ### 0.4.0 (2026-11-09)
 - Nytt verktøy, `list_children`, og et `child`-filter i `list_messages`.

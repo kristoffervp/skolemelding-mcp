@@ -4,7 +4,9 @@ English · [Norsk](README.no.md)
 
 Read Skoleplattform Oslo messages and attachments through a local MCP server. Its four tools list your children, list messages, read a message, and download an attachment. They do not send replies or mark messages as read.
 
-This is a simple local version that runs on your own computer. `list_messages` shows at most 100 messages; there is no keyword or date-range search yet. If you know a message ID, `get_message` can also find older messages by scanning up to 1,500 inbox entries. There is no fixed date cutoff in this code, but how far back it can reach depends on the Skolemelding service and how many newer messages you have.
+This is a simple local version that runs on your own computer. `list_messages` shows at most 100 messages. It can search for words in the messages and list only unread messages, messages with a yes/no question, or absence messages; there is no date-range search yet. If you know a message ID, `get_message` can also find older messages by scanning up to 1,500 inbox entries. There is no fixed date cutoff in this code, but how far back it can reach depends on the Skolemelding service and how many newer messages you have.
+
+When the school asks for a yes/no answer, the message includes `question` with the question text. When it asks parents to confirm that they have read it, the message includes `readConfirmationRequested`. The MCP cannot answer either one; use the Skolemelding app for that.
 
 Each message lists the children it is about. If you have more than one child at an Oslo school, `list_children` shows their names, and `list_messages` takes a `child` (first name or full name) to list only that child's messages. This has only been tested on an account with one child; see [issue #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) if you can help test it with several.
 
@@ -76,6 +78,10 @@ Signing in registers this computer as a device on your Skolemelding account, the
 The integration uses undocumented Skolemelding endpoints that may change. If your session expires, run `npm run login` again.
 
 ## Changelog
+
+### 0.5.0
+- `list_messages` takes `search`, `unread_only`, `questions_only` and `absence_only`. Skolemelding does the searching and filtering.
+- Messages show the school's yes/no question (`question`) and whether it asks parents to confirm they have read the message (`readConfirmationRequested`).
 
 ### 0.4.0 (2026-11-09)
 - New `list_children` tool, plus a `child` filter on `list_messages`.

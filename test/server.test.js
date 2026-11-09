@@ -8,10 +8,11 @@ import test from 'node:test';
 
 // Replaces fetch inside the server process: inbox searches are slow, attachments return fixed bytes.
 const fakeNetwork = `
-globalThis.fetch = async (url) => {
+globalThis.fetch = async (url, options) => {
   const { pathname } = new URL(url);
   if (pathname === '/api/messagesearchmobile/') {
     await new Promise((resolve) => setTimeout(resolve, 300));
+    if (JSON.parse(options.body).SearchTerm === 'nothing') return Response.json({ TotalMatching: 0, Result: [] });
     return Response.json({ TotalMatching: 1, Result: [{ Id: 7, Header: 'Hi', Body: '<p>Hello</p>', OnBehalfOf: 'ada01',
       Attachments: ['/globalassets/attachments/plan.pdf', '/globalassets/attachments/photo.png'] }] });
   }
@@ -62,6 +63,10 @@ test('MCP exposes only the four read tools and negotiates a protocol version', a
     ]);
     const [, listMessages, getMessage, getAttachment] = listed.result.tools;
     assert.equal(listMessages.inputSchema.properties.child.type, 'string');
+    for (const filter of ['unread_only', 'questions_only', 'absence_only']) {
+      assert.equal(listMessages.inputSchema.properties[filter].type, 'boolean');
+    }
+    assert.equal(listMessages.inputSchema.properties.search.type, 'string');
     assert.equal(getMessage.inputSchema.properties.include_html.type, 'boolean');
     assert.equal(getAttachment.inputSchema.properties.include_content.type, 'boolean');
     const signedOut = await server.call('tools/call', { name: 'list_messages', arguments: {} });
@@ -94,6 +99,8 @@ test('slow calls do not block ping, and attachment content uses MCP content type
     assert.deepEqual(JSON.parse(children.result.content[0].text), [{ name: 'Ada Hansen', school: 'Nordpolen skole' }]);
     const filtered = await server.call('tools/call', { name: 'list_messages', arguments: { child: 'ada' } });
     assert.equal(JSON.parse(filtered.result.content[0].text).length, 1);
+    const searched = await server.call('tools/call', { name: 'list_messages', arguments: { search: 'nothing', unread_only: true } });
+    assert.deepEqual(JSON.parse(searched.result.content[0].text), []);
 
     const pathOnly = await server.call('tools/call', { name: 'get_attachment', arguments: { attachment_id: '7:0' } });
     assert.equal(pathOnly.result.content.length, 1);

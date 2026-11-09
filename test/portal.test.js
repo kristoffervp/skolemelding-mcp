@@ -21,8 +21,9 @@ function fakeMobile(messages, { bytes = Buffer.from('file'), mimeType = 'applica
       if (!children) throw new Error('Child list unavailable');
       return children;
     },
-    async searchPage(page, pageSize) {
+    async searchPage(page, pageSize, filters = {}) {
       calls.pages.push({ page, pageSize });
+      calls.filters = filters;
       const start = (page - 1) * pageSize;
       return { Result: messages.slice(start, start + pageSize), TotalMatching: messages.length };
     },
@@ -221,4 +222,32 @@ test('listing still works when the child list is unavailable', async () => {
   const portal = new Portal({ mobile: fakeMobile([message(1, { OnBehalfOf: 'ada01' })]) });
   assert.deepEqual((await portal.listMessages(30))[0].children, []);
   await assert.rejects(portal.listMessages(30, { child: 'Ada' }), /Child list unavailable/);
+});
+
+test('search and filters are sent to Skolemelding and combine with the child filter', async () => {
+  const mobile = fakeMobile([message(2, { OnBehalfOf: 'ola02' }), message(1, { OnBehalfOf: 'ada01' })], { children: twoChildren });
+  const portal = new Portal({ mobile });
+  await portal.listMessages(30);
+  assert.deepEqual(mobile.calls.filters, { search: '', unread: false, question: false, absence: false });
+  const listed = await portal.listMessages(30, { child: 'Ada', search: ' tur ', unreadOnly: true, questionsOnly: true, absenceOnly: true });
+  assert.deepEqual(mobile.calls.filters, { search: 'tur', unread: true, question: true, absence: true });
+  assert.deepEqual(listed.map(({ id }) => id), ['1']);
+  await assert.rejects(portal.listMessages(30, { search: '  ' }), /Search must be/);
+  await assert.rejects(portal.listMessages(30, { search: 'x'.repeat(101) }), /Search must be/);
+  await assert.rejects(portal.listMessages(30, { unreadOnly: 'yes' }), /Filters must be/);
+});
+
+test('messages show yes/no questions and read confirmation requests', async () => {
+  const portal = new Portal({ mobile: fakeMobile([
+    message(3, { IsFeedBackQuestion: true, QuestionText: '<p>Kan barnet&nbsp;delta?</p>' }),
+    message(2, { IsFeedBackReadConfirmation: true, QuestionText: null }),
+    message(1, { IsFeedBackQuestion: false, QuestionText: 'Ignored' }),
+  ]) });
+  const [question, confirmation, plain] = await portal.listMessages(30);
+  assert.equal(question.question, 'Kan barnet delta?');
+  assert.equal('readConfirmationRequested' in question, false);
+  assert.equal(confirmation.readConfirmationRequested, true);
+  assert.equal('question' in confirmation, false);
+  assert.equal('question' in plain || 'readConfirmationRequested' in plain, false);
+  assert.equal((await portal.getMessage('3')).question, 'Kan barnet delta?');
 });

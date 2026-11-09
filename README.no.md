@@ -50,6 +50,8 @@ Dette skjermbildet viser bare ett eksempel på oppsett. Serveren kan også bruke
 
 `get_attachment` lagrer filen i `.data/attachments/` og returnerer sti, navn, filtype og størrelse. Selve filen er bare med i svaret fra verktøyet når det kalles med `include_content: true`; bilder returneres da som bilder og andre filer som innebygde ressurser. Klienter som ikke kan lese lokale filer, som ChatGPT-appen eller Claude Desktop, trenger `include_content: true` for å se hva et vedlegg inneholder. Klienter som kan lese lokale filer, kan åpne den lagrede filen uten.
 
+Filer som ikke er vanlige dokumenter, bilder, lyd, video eller ZIP-arkiver, lagres med `.download` lagt til i navnet, slik at de ikke åpnes eller kjøres ved et uhell. På macOS og Windows merkes lagrede vedlegg også som lastet ned fra internett, slik at systemet advarer før de åpnes.
+
 `get_message` returnerer meldingen og svarene som ren tekst; legg til `include_html: true` for også å få original-HTML. Meldinger gjenbrukes i opptil fem minutter, så `unread` kan henge etter hvis du leser en melding i appen.
 
 Versjon 0.3.0 endret disse standardene. Tidligere versjoner returnerte alltid vedlegg som `base64` og meldinger med `bodyHtml`.
@@ -58,9 +60,8 @@ Du kan endre standardverdiene med disse miljøvariablene i innstillingene til MC
 
 | Variabel | Standard | Formål |
 | --- | --- | --- |
-| `SKOLEMELDING_DATA_DIR` | `.data` i prosjektet | Innloggingsfiler og nettleserprofil |
+| `SKOLEMELDING_DATA_DIR` | `.data` i prosjektet | Innloggingsfil og lagrede vedlegg |
 | `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` i datamappen | Lagret innlogging |
-| `SKOLEMELDING_MOBILE_PROFILE` | `mobile-browser-profile` i datamappen | Nettleserprofil for innlogging |
 | `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` i datamappen | Hvor `get_attachment` lagrer filer |
 | `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` på Windows) | Nettleser for innlogging |
 | `SKOLEMELDING_PLAYWRIGHT_PATH` | `playwright` fra `node_modules` | Playwright-installasjonen som brukes |
@@ -71,13 +72,22 @@ Innloggingen etterligner den offisielle appen Skolemelding Foresatte. Hvis Skole
 
 ## Sikkerhet og personvern
 
-Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`. Lagrede vedlegg blir liggende i vedleggsmappen til du sletter dem.
+Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. MCP-en fjerner usynlige tegn og tekst som er skjult i meldingens HTML, og verktøybeskrivelsene ber klienten behandle meldingstekst som informasjon, ikke instruksjoner, men det kan ikke stoppe alle forsøk. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`. Lagrede vedlegg blir liggende i vedleggsmappen til du sletter dem.
 
 Innloggingen registrerer denne datamaskinen som en enhet på Skolemelding-kontoen din, slik mobilappen gjør. Den sender navnet på operativsystemet og kjerneversjonen (for eksempel `darwin|25.6.0`), appversjonen og en tilfeldig enhets-ID som lages ved innlogging.
+
+`npm run login` bruker en ny, tom nettleserprofil og sletter den når innloggingen er ferdig, så ingen ID-porten-økt eller lagret passord blir liggende igjen. Versjoner før 0.5.1 beholdt en nettleserprofil i `.data/mobile-browser-profile/`; den mappen kan du slette.
 
 Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
 
 ## Endringslogg
+
+### 0.5.1
+- `npm run login` beholder ikke lenger en nettleserprofil; `SKOLEMELDING_MOBILE_PROFILE` er fjernet. En gammel `.data/mobile-browser-profile/`-mappe kan slettes.
+- Usynlige tegn og skjult tekst fjernes fra meldingstekst, og verktøybeskrivelsene sier at meldingstekst er informasjon, ikke instruksjoner.
+- Vedlegg av uvanlige filtyper lagres med `.download` lagt til, og lagrede vedlegg merkes som lastet ned på macOS og Windows.
+- Meldinger har ikke lenger `recipients`.
+- Bare ett søk gjennom innboksen kjører om gangen, og et søk stopper etter 90 sekunder. Feilmeldinger viser ikke lenger lokale filstier.
 
 ### 0.5.0
 - `list_messages` tar imot `search`, `unread_only`, `questions_only` og `absence_only`. Søket og filtreringen gjøres av Skolemelding.

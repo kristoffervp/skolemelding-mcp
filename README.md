@@ -50,6 +50,8 @@ This screenshot shows just one setup example. The server can also work with [Cla
 
 `get_attachment` saves the file in `.data/attachments/` and returns its path, name, type, and size. The tool result only contains the file itself when the tool is called with `include_content: true`; images are then returned as images and other files as embedded resources. Clients that cannot read local files, such as the ChatGPT desktop app or Claude Desktop, need `include_content: true` to see what an attachment says. Clients that can read local files can open the saved file without it.
 
+Files that are not common documents, images, audio, video or ZIP archives are saved with `.download` added to the name, so they are not opened or run by mistake. On macOS and Windows, saved attachments are also marked as downloaded from the internet, so the system warns before opening them.
+
 `get_message` returns the message and its replies as plain text; add `include_html: true` to also get the original HTML. Messages are reused for up to five minutes, so `unread` can lag behind after you read a message in the app.
 
 Version 0.3.0 changed these defaults. Earlier versions always returned attachments as `base64` and messages with `bodyHtml`.
@@ -58,9 +60,8 @@ To change the defaults, set these environment variables in the MCP client settin
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SKOLEMELDING_DATA_DIR` | `.data` in this project | Sign-in files and browser profile |
+| `SKOLEMELDING_DATA_DIR` | `.data` in this project | Sign-in file and saved attachments |
 | `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` in the data folder | Saved sign-in |
-| `SKOLEMELDING_MOBILE_PROFILE` | `mobile-browser-profile` in the data folder | Browser profile used for sign-in |
 | `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` in the data folder | Where `get_attachment` saves files |
 | `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` on Windows) | Browser used for sign-in |
 | `SKOLEMELDING_PLAYWRIGHT_PATH` | `playwright` from `node_modules` | Playwright installation to use |
@@ -71,13 +72,22 @@ The sign-in imitates the official Skolemelding Foresatte app. If Skolemelding st
 
 ## Security and privacy
 
-This MCP runs locally and does not open a network port. An AI client you connect can still retrieve school messages and attachments from your account. Content used with a cloud AI service may be sent to that service. Messages may also contain text intended to influence the agent. Use clients you trust, review tool calls, and never share the sign-in files in `.data/`. Saved attachments stay in the attachment folder until you delete them.
+This MCP runs locally and does not open a network port. An AI client you connect can still retrieve school messages and attachments from your account. Content used with a cloud AI service may be sent to that service. Messages may also contain text intended to influence the agent. The MCP removes invisible characters and text hidden in the message HTML, and its tool descriptions tell the client to treat message text as information, not instructions, but this cannot stop every attempt. Use clients you trust, review tool calls, and never share the sign-in files in `.data/`. Saved attachments stay in the attachment folder until you delete them.
 
 Signing in registers this computer as a device on your Skolemelding account, the same way the mobile app does. It sends the operating system name and kernel version (for example `darwin|25.6.0`), the app version, and a random device ID created at sign-in.
+
+`npm run login` uses a new, empty browser profile and deletes it when sign-in is finished, so no ID-porten session or saved password is left behind. Versions before 0.5.1 kept a browser profile in `.data/mobile-browser-profile/`; you can delete that folder.
 
 The integration uses undocumented Skolemelding endpoints that may change. If your session expires, run `npm run login` again.
 
 ## Changelog
+
+### 0.5.1
+- `npm run login` no longer keeps a browser profile; `SKOLEMELDING_MOBILE_PROFILE` is removed. You can delete an old `.data/mobile-browser-profile/` folder.
+- Invisible characters and hidden text are removed from message text, and the tool descriptions say message text is information, not instructions.
+- Attachments of unusual types are saved with `.download` added, and saved attachments are marked as downloaded on macOS and Windows.
+- Messages no longer include `recipients`.
+- Only one inbox scan runs at a time, and a scan stops after 90 seconds. Error messages no longer show local file paths.
 
 ### 0.5.0
 - `list_messages` takes `search`, `unread_only`, `questions_only` and `absence_only`. Skolemelding does the searching and filtering.

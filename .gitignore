@@ -2,6 +2,9 @@
 # research, and future scratch files cannot be added by `git add .`.
 /*
 !/.gitignore
+!/.github/
+/.github/*
+!/.github/workflows/
 !/LICENSE
 !/README.md
 !/README.no.md
@@ -21,4 +24,5 @@
 !/test/
 /test/*
 !/test/mobile-auth.test.js
+!/test/portal.test.js
 !/test/server.test.js

@@ -29,22 +29,9 @@ npm run login
 
 Complete the ID-porten sign-in in Chrome. Run `npm test` to check the server without using your account.
 
-## Add to the ChatGPT desktop app (example)
+## Add to an AI client
 
-Open **Settings → MCP servers → Add server** and choose **STDIO**. Enter:
-
-| Field | Value |
-| --- | --- |
-| Command to launch | Absolute path to Node.js; find it with `command -v node` |
-| Arguments | One argument: absolute path to this project's `src/server.js` |
-| Working directory | Absolute path to this project folder |
-| Environment variables | Leave empty |
-
-Save, restart ChatGPT, then type `/mcp` in a chat to check the connection. Replace the example paths in the screenshot with your own. The pictured `~/code` is only a placeholder for the working directory.
-
-![ChatGPT desktop MCP server setup showing the command, argument, and working directory fields](docs/chatgpt-mcp-setup.png)
-
-This screenshot shows just one setup example. The server can also work with [Claude Desktop](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop), [Grok Build](https://docs.x.ai/build/features/mcp-servers), or a client using a local AI model if that client supports local stdio MCP servers. Follow each client's setup instructions; a model alone cannot connect to MCP. ChatGPT in a web browser does not use this local setup.
+Add the server to your client as a local (stdio) MCP server. Use `node` as the command (the full path from `command -v node` if the client cannot find it) and the full path to this project's `src/server.js` as the only argument. See the setup guide for [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp) or [Grok Build](https://docs.x.ai/build/features/mcp-servers). AI clients in a web browser cannot use a local server.
 
 ## Attachments and configuration
 
@@ -89,6 +76,7 @@ The integration uses undocumented Skolemelding endpoints that may change. If you
 - Messages no longer include `recipients`.
 - Only one inbox scan runs at a time, and a scan stops after 90 seconds. Error messages no longer show local file paths.
 - Sign-in requests no longer follow redirects, one malformed message can no longer break `list_messages` or `get_message`, and a refused attachment gives a clearer error. See [#12](https://github.com/kristoffervp/skolemelding-mcp/issues/12).
+- `unread_only` no longer lists chats that Skolemelding marks as read. The setup example is replaced by links to each client's guide.
 
 ### 0.5.0
 - `list_messages` takes `search`, `unread_only`, `questions_only` and `absence_only`. Skolemelding does the searching and filtering.

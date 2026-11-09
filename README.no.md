@@ -29,22 +29,9 @@ npm run login
 
 Fullfør innloggingen via ID-porten i Chrome. Kjør `npm test` for å kontrollere serveren uten å bruke kontoen din.
 
-## Legg til i ChatGPT-appen (eksempel)
+## Legg til i en KI-klient
 
-Åpne **Settings → MCP servers → Add server** og velg **STDIO**. Fyll inn:
-
-| Felt | Verdi |
-| --- | --- |
-| Command to launch | Fullstendig sti til Node.js; finn den med `command -v node` |
-| Arguments | Ett argument: fullstendig sti til prosjektets `src/server.js` |
-| Working directory | Fullstendig sti til prosjektmappen |
-| Environment variables | La stå tomt |
-
-Lagre, start ChatGPT på nytt, og skriv `/mcp` i en samtale for å kontrollere tilkoblingen. Bytt ut eksempelstiene i skjermbildet med dine egne. `~/code` i bildet er bare en plassholder for arbeidsmappen.
-
-![Oppsett av lokal MCP-server i ChatGPT med kommando, argument og arbeidsmappe](docs/chatgpt-mcp-setup.png)
-
-Dette skjermbildet viser bare ett eksempel på oppsett. Serveren kan også brukes med [Claude Desktop](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop), [Grok Build](https://docs.x.ai/build/features/mcp-servers) eller en klient med en lokal KI-modell hvis klienten støtter lokale MCP-servere via stdio. Følg oppsettet for din klient; en modell alene kan ikke koble seg til MCP. ChatGPT i nettleseren bruker ikke dette lokale oppsettet.
+Legg til serveren som en lokal MCP-server (stdio) i klienten din. Bruk `node` som kommando (den fullstendige stien fra `command -v node` hvis klienten ikke finner den) og den fullstendige stien til prosjektets `src/server.js` som eneste argument. Se oppsettet for [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp) eller [Grok Build](https://docs.x.ai/build/features/mcp-servers). KI-klienter i nettleseren kan ikke bruke en lokal server.
 
 ## Vedlegg og innstillinger
 
@@ -89,6 +76,7 @@ Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis ø
 - Meldinger har ikke lenger `recipients`.
 - Bare ett søk gjennom innboksen kjører om gangen, og et søk stopper etter 90 sekunder. Feilmeldinger viser ikke lenger lokale filstier.
 - Innloggingen følger ikke lenger omdirigeringer, én feilformet melding kan ikke lenger stoppe `list_messages` eller `get_message`, og et avvist vedlegg gir en tydeligere feilmelding. Se [#12](https://github.com/kristoffervp/skolemelding-mcp/issues/12).
+- `unread_only` viser ikke lenger chatter som Skolemelding har merket som lest. Oppsettseksempelet er erstattet med lenker til oppsettet for hver klient.
 
 ### 0.5.0
 - `list_messages` tar imot `search`, `unread_only`, `questions_only` og `absence_only`. Søket og filtreringen gjøres av Skolemelding.

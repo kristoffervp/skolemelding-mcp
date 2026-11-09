@@ -10,9 +10,6 @@
 !/README.no.md
 !/package.json
 !/package-lock.json
-!/docs/
-/docs/*
-!/docs/chatgpt-mcp-setup.png
 !/src/
 /src/*
 !/src/browser.js

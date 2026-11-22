@@ -33,6 +33,8 @@ Fullfør innloggingen via ID-porten i Chrome. Kjør `npm test` for å kontroller
 
 Legg til serveren som en lokal MCP-server (stdio) i klienten din. Bruk `node` som kommando (den fullstendige stien fra `command -v node` hvis klienten ikke finner den) og den fullstendige stien til prosjektets `src/server.js` som eneste argument. Se oppsettet for [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp) eller [Grok Build](https://docs.x.ai/build/features/mcp-servers). KI-klienter i nettleseren kan ikke bruke en lokal server.
 
+Hvert verktøy beskriver hvordan svaret ser ut (`outputSchema`), og returnerer det som `structuredContent` i tillegg til JSON-tekst. Klienter der modellen skriver kode mot MCP-verktøy, for eksempel Cloudflares Code Mode, kan bruke dette til å vite hva hvert verktøy returnerer.
+
 ## Vedlegg og innstillinger
 
 `get_attachment` lagrer filen i `.data/attachments/` og returnerer sti, navn, filtype og størrelse. Selve filen er bare med i svaret fra verktøyet når det kalles med `include_content: true`; bilder returneres da som bilder og andre filer som innebygde ressurser. Klienter som ikke kan lese lokale filer, som ChatGPT-appen eller Claude Desktop, trenger `include_content: true` for å se hva et vedlegg inneholder. Klienter som kan lese lokale filer, kan åpne den lagrede filen uten.
@@ -68,6 +70,10 @@ Innloggingen registrerer denne datamaskinen som en enhet på Skolemelding-kontoe
 Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
 
 ## Endringslogg
+
+### 0.6.0
+- Alle verktøy har `outputSchema` og returnerer svaret som `structuredContent`, i tillegg til JSON-tekst.
+- `list_children` returnerer nå `{ "children": [...] }` og `list_messages` returnerer `{ "messages": [...] }` i stedet for en liste alene.
 
 ### 0.5.1
 - `npm run login` beholder ikke lenger en nettleserprofil; `SKOLEMELDING_MOBILE_PROFILE` er fjernet. En gammel `.data/mobile-browser-profile/`-mappe kan slettes.

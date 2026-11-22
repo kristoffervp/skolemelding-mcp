@@ -14,6 +14,9 @@ globalThis.fetch = async (url, options) => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     if (JSON.parse(options.body).SearchTerm === 'nothing') return Response.json({ TotalMatching: 0, Result: [] });
     return Response.json({ TotalMatching: 1, Result: [{ Id: 7, Header: 'Hi', Body: '<p>Hello</p>', OnBehalfOf: 'ada01',
+      Timestamp: '2026-10-01T08:00:00', IsMessageSeen: false, IsFeedBackQuestion: true, QuestionText: 'Can Ada come?',
+      IsFeedBackReadConfirmation: true,
+      Threads: [{ ThreadId: 't1', TimeStamp: '2026-10-02T09:00:00', DisplayText: 'Reply', IsSeen: true, ThreadText: '<p>Yes</p>' }],
       Attachments: ['/globalassets/attachments/plan.pdf', '/globalassets/attachments/photo.png', '/globalassets/attachments/gone.pdf'] }] });
   }
   if (pathname === '/api/MyProfile/GetChildInfo') {
@@ -25,6 +28,32 @@ globalThis.fetch = async (url, options) => {
   }
   return new Response('not stubbed', { status: 500 });
 };`;
+
+// Checks a value against the parts of JSON Schema the output schemas use.
+function schemaErrors(schema, value, path = '$') {
+  const actual = Array.isArray(value) ? 'array' : Number.isInteger(value) ? 'integer' : value === null ? 'null' : typeof value;
+  if (actual !== schema.type && !(schema.type === 'number' && actual === 'integer')) return [`${path} is ${actual}, not ${schema.type}`];
+  const errors = [];
+  if ('const' in schema && value !== schema.const) errors.push(`${path} is not ${schema.const}`);
+  if (actual === 'array') value.forEach((item, index) => errors.push(...schemaErrors(schema.items, item, `${path}[${index}]`)));
+  if (actual === 'object') {
+    for (const key of schema.required ?? []) if (!(key in value)) errors.push(`${path}.${key} is missing`);
+    for (const [key, item] of Object.entries(value)) {
+      if (schema.properties?.[key]) errors.push(...schemaErrors(schema.properties[key], item, `${path}.${key}`));
+      else if (schema.additionalProperties === false) errors.push(`${path}.${key} is not in the schema`);
+    }
+  }
+  return errors;
+}
+
+// Returns the structured result after checking it matches both the output schema and the text block.
+function structuredResult(response, tool) {
+  const { structuredContent, content } = response.result;
+  assert.ok(structuredContent, `${tool.name} should return structuredContent`);
+  assert.deepEqual(JSON.parse(content[0].text), structuredContent);
+  assert.deepEqual(schemaErrors(tool.outputSchema, structuredContent), []);
+  return structuredContent;
+}
 
 function startServer({ env = {}, nodeArgs = [] } = {}) {
   const child = spawn(process.execPath, [...nodeArgs, 'src/server.js'], {
@@ -68,6 +97,9 @@ test('MCP exposes only the four read tools and negotiates a protocol version', a
       'list_children', 'list_messages', 'get_message', 'get_attachment',
     ]);
     const [, listMessages, getMessage, getAttachment] = listed.result.tools;
+    for (const tool of listed.result.tools) {
+      assert.equal(tool.outputSchema.type, 'object', `${tool.name} should describe its result`);
+    }
     assert.equal(listMessages.inputSchema.properties.child.type, 'string');
     for (const filter of ['unread_only', 'questions_only', 'absence_only']) {
       assert.equal(listMessages.inputSchema.properties[filter].type, 'boolean');
@@ -100,23 +132,37 @@ test('slow calls do not block ping, and attachment content uses MCP content type
   });
   try {
     await server.call('initialize', { protocolVersion: '2025-11-25' });
+    const tools = Object.fromEntries((await server.call('tools/list')).result.tools.map((tool) => [tool.name, tool]));
     const [listed] = await Promise.all([
       server.call('tools/call', { name: 'list_messages', arguments: {} }), server.call('ping'),
     ]);
-    assert.deepEqual(server.order.slice(1), [3, 2], 'ping should answer before the slow list');
-    assert.deepEqual(JSON.parse(listed.result.content[0].text)[0].children, ['Ada Hansen']);
+    assert.deepEqual(server.order.slice(2), [4, 3], 'ping should answer before the slow list');
+    const [first] = structuredResult(listed, tools.list_messages).messages;
+    assert.deepEqual(first.children, ['Ada Hansen']);
+    assert.equal(first.question, 'Can Ada come?');
+    assert.equal(first.readConfirmationRequested, true);
     const children = await server.call('tools/call', { name: 'list_children', arguments: {} });
-    assert.deepEqual(JSON.parse(children.result.content[0].text), [{ name: 'Ada Hansen', school: 'Nordpolen skole' }]);
+    assert.deepEqual(structuredResult(children, tools.list_children), { children: [{ name: 'Ada Hansen', school: 'Nordpolen skole' }] });
     const filtered = await server.call('tools/call', { name: 'list_messages', arguments: { child: 'ada' } });
-    assert.equal(JSON.parse(filtered.result.content[0].text).length, 1);
+    assert.equal(structuredResult(filtered, tools.list_messages).messages.length, 1);
     const searched = await server.call('tools/call', { name: 'list_messages', arguments: { search: 'nothing', unread_only: true } });
-    assert.deepEqual(JSON.parse(searched.result.content[0].text), []);
+    assert.deepEqual(structuredResult(searched, tools.list_messages), { messages: [] });
+
+    for (const include_html of [false, true]) {
+      const read = await server.call('tools/call', { name: 'get_message', arguments: { id: '7', include_html } });
+      const message = structuredResult(read, tools.get_message);
+      assert.equal(message.bodyText, 'Hello');
+      assert.equal(message.threads[0].text, 'Yes');
+      assert.equal('bodyHtml' in message, include_html);
+      assert.equal('html' in message.threads[0], include_html);
+    }
 
     const pathOnly = await server.call('tools/call', { name: 'get_attachment', arguments: { attachment_id: '7:0' } });
     assert.equal(pathOnly.result.content.length, 1);
-    assert.equal(JSON.parse(pathOnly.result.content[0].text).path, join(directory, 'attachments', '7-0-plan.pdf'));
+    assert.equal(structuredResult(pathOnly, tools.get_attachment).path, join(directory, 'attachments', '7-0-plan.pdf'));
 
     const pdf = await server.call('tools/call', { name: 'get_attachment', arguments: { attachment_id: '7:0', include_content: true } });
+    assert.equal(structuredResult(pdf, tools.get_attachment).size, 5);
     const [, resource] = pdf.result.content;
     assert.equal(resource.type, 'resource');
     assert.equal(resource.resource.mimeType, 'application/pdf');
@@ -141,6 +187,7 @@ test('local file errors do not reveal paths', async () => {
   try {
     const failed = await server.call('tools/call', { name: 'list_children', arguments: {} });
     assert.equal(failed.result.isError, true);
+    assert.equal('structuredContent' in failed.result, false);
     assert.equal(failed.result.content[0].text, 'Local file error (EISDIR).');
   } finally {
     await server.stop();

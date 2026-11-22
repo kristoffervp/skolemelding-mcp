@@ -33,6 +33,8 @@ Complete the ID-porten sign-in in Chrome. Run `npm test` to check the server wit
 
 Add the server to your client as a local (stdio) MCP server. Use `node` as the command (the full path from `command -v node` if the client cannot find it) and the full path to this project's `src/server.js` as the only argument. See the setup guide for [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp) or [Grok Build](https://docs.x.ai/build/features/mcp-servers). AI clients in a web browser cannot use a local server.
 
+Each tool describes the shape of its result (`outputSchema`) and returns it as `structuredContent` as well as JSON text. Clients that let the model write code against MCP tools, such as Cloudflare's Code Mode, can use this to know what each tool returns.
+
 ## Attachments and configuration
 
 `get_attachment` saves the file in `.data/attachments/` and returns its path, name, type, and size. The tool result only contains the file itself when the tool is called with `include_content: true`; images are then returned as images and other files as embedded resources. Clients that cannot read local files, such as the ChatGPT desktop app or Claude Desktop, need `include_content: true` to see what an attachment says. Clients that can read local files can open the saved file without it.
@@ -68,6 +70,10 @@ Signing in registers this computer as a device on your Skolemelding account, the
 The integration uses undocumented Skolemelding endpoints that may change. If your session expires, run `npm run login` again.
 
 ## Changelog
+
+### 0.6.0
+- Every tool has an `outputSchema` and returns its result as `structuredContent`, as well as JSON text.
+- `list_children` now returns `{ "children": [...] }` and `list_messages` returns `{ "messages": [...] }` instead of a bare list.
 
 ### 0.5.1
 - `npm run login` no longer keeps a browser profile; `SKOLEMELDING_MOBILE_PROFILE` is removed. You can delete an old `.data/mobile-browser-profile/` folder.

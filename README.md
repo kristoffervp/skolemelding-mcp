@@ -2,11 +2,13 @@
 
 <h1 align="center">Skolemelding MCP</h1>
 
-[![Test](https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml)
-[![Release](https://img.shields.io/github/v/release/kristoffervp/skolemelding-mcp)](https://github.com/kristoffervp/skolemelding-mcp/releases)
-[![License: 0BSD](https://img.shields.io/badge/license-0BSD-blue)](LICENSE)
+<p align="center">
+  <a href="https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml"><img src="https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml/badge.svg" alt="Test"></a>
+  <a href="https://github.com/kristoffervp/skolemelding-mcp/releases"><img src="https://img.shields.io/github/v/release/kristoffervp/skolemelding-mcp" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-0BSD-blue" alt="License: 0BSD"></a>
+</p>
 
-English · [Norsk](README.no.md)
+<p align="center">English · <a href="README.no.md">Norsk</a></p>
 
 A local MCP server that lets an AI client read your Skoleplattform Oslo (Skolemelding) messages and attachments. It can also send replies, answers and absence reports, but only if you turn that on.
 

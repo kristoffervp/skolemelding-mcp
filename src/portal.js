@@ -24,7 +24,7 @@ const safeExtensions = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt'
 // or disguise text, so they are removed from everything returned to the client.
 const invisibleCharacters = /(?![\n\t])[\p{Cf}\p{Cc}]/gu;
 
-function clean(text) {
+export function clean(text) {
   return String(text ?? '').toWellFormed().replace(invisibleCharacters, '');
 }
 
@@ -73,7 +73,7 @@ function fileName(messageId, index, name) {
   return `${messageId}-${index}-${base || 'attachment'}${extension}${suffix}`;
 }
 
-function plainText(html) {
+export function plainText(html) {
   const source = String(html || '').replace(/data:[^"')\s]{100,}/g, 'data:').slice(0, maxHtmlLength);
   try {
     return clean(convert(source, textOptions)).replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').trim();
@@ -164,7 +164,8 @@ export class Portal {
         // FirstName can include middle names, so also accept the first given name with or without the last name.
         const aliases = [name, firstNames, givenName, [givenName, lastName].filter(Boolean).join(' ')]
           .filter(Boolean).map((alias) => alias.toLocaleLowerCase('nb'));
-        return { userName: String(child.UserName), name: clean(name), school: clean(child.SchoolName), aliases };
+        return { userName: String(child.UserName), name: clean(name), school: clean(child.SchoolName),
+          schoolCode: String(child.SchoolCode || ''), aliases };
       });
     this.#children = { list, at: Date.now() };
     return list;
@@ -214,6 +215,19 @@ export class Portal {
       result.preview = message.SearchText ? clean(message.SearchText) : plainText(message.Body).slice(0, 240);
     }
     return result;
+  }
+
+  // For sending: the named child, or the only child when no name is given.
+  async childFor(query) {
+    if (query !== undefined) return (await this.#findChild(query)).child;
+    const children = await this.#childList();
+    if (children.length !== 1) throw new Error(`Name the child: ${children.map(({ name }) => name).join(', ') || 'none found'}.`);
+    return children[0];
+  }
+
+  async childNames(userNames) {
+    const children = await this.#childListOrEmpty();
+    return userNames.map((userName) => children.find((child) => child.userName === userName)?.name).filter(Boolean);
   }
 
   async listChildren() {

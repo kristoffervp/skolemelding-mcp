@@ -2,11 +2,11 @@
 
 Norsk · [English](README.md)
 
-Les meldinger og vedlegg fra Skoleplattform Oslo med en lokal MCP-server. De fire verktøyene viser barna dine, viser meldinger, leser en melding og laster ned et vedlegg. De sender ikke svar og markerer ikke meldinger som lest.
+Les meldinger og vedlegg fra Skoleplattform Oslo med en lokal MCP-server. De fire verktøyene viser barna dine, viser meldinger, leser en melding og laster ned et vedlegg. De sender ingenting og markerer ikke meldinger som lest. Å sende svar og nye meldinger kan slås på; se [Sending](#sending-må-slås-på).
 
 Dette er en enkel lokal versjon som kjører på din egen datamaskin. `list_messages` viser maks 100 meldinger. Den kan søke etter ord i meldingene og vise bare uleste meldinger, meldinger med et ja/nei-spørsmål eller fraværsmeldinger; søk på datointervall finnes ikke ennå. Hvis du kjenner meldings-ID-en, kan `get_message` også finne eldre meldinger ved å bla gjennom opptil 1 500 innboksmeldinger. Koden har ingen fast datogrense, men hvor langt tilbake den når, avhenger av Skolemelding-tjenesten og hvor mange nyere meldinger du har.
 
-Når skolen ber om et ja/nei-svar, har meldingen `question` med spørsmålsteksten. Når skolen ber foresatte bekrefte at de har lest meldingen, har den `readConfirmationRequested`. MCP-en kan ikke svare på noen av dem; bruk Skolemelding-appen til det.
+Når skolen ber om et ja/nei-svar, har meldingen `question` med spørsmålsteksten. Når skolen ber foresatte bekrefte at de har lest meldingen, har den `readConfirmationRequested`. Med sending slått på kan MCP-en svare på begge; ellers bruker du Skolemelding-appen.
 
 Hver melding viser hvilke barn den gjelder. Har du flere barn i Osloskolen, viser `list_children` navnene deres, og `list_messages` tar imot `child` (fornavn eller fullt navn) for å vise bare meldingene til det barnet. Dette er bare testet på en konto med ett barn; se [sak #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) hvis du kan hjelpe til med å teste med flere.
 
@@ -35,6 +35,26 @@ Legg til serveren som en lokal MCP-server (stdio) i klienten din. Bruk `node` so
 
 Hvert verktøy beskriver hvordan svaret ser ut (`outputSchema`), og returnerer det som `structuredContent` i tillegg til JSON-tekst. Klienter der modellen skriver kode mot MCP-verktøy, for eksempel Cloudflares Code Mode, kan bruke dette til å vite hva hvert verktøy returnerer.
 
+## Sending (må slås på)
+
+Sending er av som standard. Sett `SKOLEMELDING_ALLOW_SEND=1` i innstillingene til MCP-klienten for å få sju verktøy til:
+
+| Verktøy | Hva det gjør |
+| --- | --- |
+| `list_recipients` | Ansatte du kan skrive til om et barn, barnets egne lærere først |
+| `prepare_reply` | Svar på en mottatt melding, i tråden (eller en ny tråd til avsenderen) |
+| `prepare_answer` | `ja` eller `nei` på skolens ja/nei-spørsmål |
+| `prepare_read_confirmation` | Bekreft at du har lest en melding, når skolen ber om det |
+| `prepare_message` | Ny melding til høyst 5 ansatte fra `list_recipients` |
+| `prepare_absence` | Melding om fravær: i dag eller i morgen (hel dag), eller datoer (`ÅÅÅÅ-MM-DD`) med eventuelle klokkeslett (`TT:MM`); starten høyst en måned tilbake |
+| `send_prepared` | Sender det et prepare-verktøy har gjort klart |
+
+Ingenting sendes i ett steg. Et prepare-verktøy sjekker meldingen (svar tillatt, spørsmålet ikke besvart, mottakere du kan skrive til) og returnerer nøyaktig hva som vil bli sendt, med en engangskode. `send_prepared` sender bare det, én gang; koden går ut etter 10 minutter. KI-klienten skal vise deg forhåndsvisningen og spørre før den kaller `send_prepared`, og verktøyet er merket som et som ikke kan angres, så klienter som spør før slike verktøy, spør deg. Alt som sendes, logges i `.data/sent.jsonl`.
+
+Svar som starter en ny tråd, nye meldinger og fraværsmeldinger kan sendes i kopi til barnets andre foresatte (`include_other_parents`), som «Kopi til» i appen. Teksten sendes som ren tekst (nye meldinger som enkle avsnitt); vedlegg og bilder støttes ikke. Etter et svar eller en lesebekreftelse leser MCP-en meldingen på nytt og melder `verified`. Lesebekreftelsen bruker samme forespørsel som svarskjemaet i nettportalen; er `verified` usann, sjekk i appen.
+
+Verktøyene bruker endepunktene til Skoleplattforms nettportal, som godtar den samme innloggingen som appen. De er prøvd på en konto med ett barn. En melding eller et vedlegg kan inneholde tekst som skal få KI-klienten til å sende noe: verktøybeskrivelsene sier at bare det du har bedt om, skal sendes, men la sending være av når du ikke trenger det, og les forhåndsvisningen.
+
 ## Vedlegg og innstillinger
 
 `get_attachment` lagrer filen i `.data/attachments/` og returnerer sti, navn, filtype og størrelse. Selve filen er bare med i svaret fra verktøyet når det kalles med `include_content: true`; bilder returneres da som bilder og andre filer som innebygde ressurser. Klienter som ikke kan lese lokale filer, som ChatGPT-appen eller Claude Desktop, trenger `include_content: true` for å se hva et vedlegg inneholder. Klienter som kan lese lokale filer, kan åpne den lagrede filen uten.
@@ -49,7 +69,8 @@ Du kan endre standardverdiene med disse miljøvariablene i innstillingene til MC
 
 | Variabel | Standard | Formål |
 | --- | --- | --- |
-| `SKOLEMELDING_DATA_DIR` | `.data` i prosjektet | Innloggingsfil og lagrede vedlegg |
+| `SKOLEMELDING_ALLOW_SEND` | av | `1` gir sendeverktøyene; se [Sending](#sending-må-slås-på) |
+| `SKOLEMELDING_DATA_DIR` | `.data` i prosjektet | Innloggingsfil, lagrede vedlegg og loggen over sendte meldinger |
 | `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` i datamappen | Lagret innlogging |
 | `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` i datamappen | Hvor `get_attachment` lagrer filer |
 | `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` på Windows) | Nettleser for innlogging |
@@ -70,6 +91,9 @@ Innloggingen registrerer denne datamaskinen som en enhet på Skolemelding-kontoe
 Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
 
 ## Endringslogg
+
+### 0.7.0
+- Sending som må slås på (`SKOLEMELDING_ALLOW_SEND=1`): svar i en tråd, svar på ja/nei-spørsmål, bekreft at du har lest, skriv nye meldinger til ansatte, og meld fravær, alltid i to steg (`prepare_…`, så `send_prepared` med en engangskode). Sendte meldinger logges i `.data/sent.jsonl`. Uten innstillingen er MCP-en uendret og leser bare.
 
 ### 0.6.1
 - `npm run login:mobile` er fjernet; bruk `npm run login`, som gjør det samme.

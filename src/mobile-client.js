@@ -1,6 +1,4 @@
-import { outdatedHint, readMobileAuth, refreshMobileAuth } from './mobile-auth.js';
-
-const origin = 'https://portal.skoleplattform.no';
+import { outdatedHint, portalOrigin as origin, readMobileAuth, refreshMobileAuth } from './mobile-auth.js';
 
 export class MobileClient {
   #auth;

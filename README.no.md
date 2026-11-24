@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/banner.jpg" alt="Skolemelding MCP: en telefon sender en skolemelding med vedlegg, for Skoleplattform Oslo" width="100%"></p>
+
 # Skolemelding MCP
 
 Norsk · [English](README.md)

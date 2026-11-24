@@ -6,6 +6,9 @@
 /.github/*
 !/.github/workflows/
 !/LICENSE
+!/assets/
+/assets/*
+!/assets/banner.jpg
 !/README.md
 !/README.no.md
 !/package.json

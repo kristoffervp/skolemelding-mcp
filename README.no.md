@@ -74,6 +74,37 @@ All sending skjer i to steg. Et prepare-verktøy sjekker forespørselen og viser
 - Etter et ja/nei-svar eller en lesebekreftelse leser serveren meldingen på nytt og melder `verified`.
 - En melding kan inneholde tekst som skal få KI-klienten til å sende noe. Les forhåndsvisningen, og la sending være av når du ikke trenger den.
 
+## Slik virker det
+
+Serveren kjører på datamaskinen din og snakker med KI-klienten over stdio. Både lesing og sending bruker innloggingen fra `npm run login`, som er lagret i `.data/`.
+
+```mermaid
+flowchart LR
+  client["KI-klient<br/>Claude Desktop, ChatGPT …"]
+  subgraph computer["Din datamaskin"]
+    server["MCP-server<br/>src/server.js"]
+    read["Leseverktøy<br/>portal.js"]
+    send["Sendeverktøy<br/>sending.js<br/>(bare med SKOLEMELDING_ALLOW_SEND=1)"]
+    http["HTTP-klient<br/>mobile-client.js"]
+    login["npm run login<br/>Chrome via Playwright"]
+    data[(".data/<br/>innlogging, vedlegg,<br/>sent.jsonl")]
+  end
+  idporten["ID-porten"]
+  portal["Skoleplattform Oslo<br/>portal.skoleplattform.no"]
+  client <-->|"MCP over stdio"| server
+  server --> read
+  server --> send
+  read --> http
+  send --> http
+  http <-->|"HTTPS med app-innloggingen"| portal
+  login -->|"logg inn"| idporten
+  login -->|"app-innlogging"| portal
+  login -->|"lagrer"| data
+  http -.->|"leser og fornyer innloggingen"| data
+  read -.->|"lagrer vedlegg"| data
+  send -.->|"logger det som sendes"| data
+```
+
 ## Innstillinger
 
 Settes i klientoppsettet (og i Terminal for `npm run login`):

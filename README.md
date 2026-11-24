@@ -2,139 +2,117 @@
 
 # Skolemelding MCP
 
+[![Test](https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/kristoffervp/skolemelding-mcp)](https://github.com/kristoffervp/skolemelding-mcp/releases)
+[![License: 0BSD](https://img.shields.io/badge/license-0BSD-blue)](LICENSE)
+
 English · [Norsk](README.no.md)
 
-Read Skoleplattform Oslo messages and attachments through a local MCP server. Its four tools list your children, list messages, read a message, and download an attachment. They do not send anything or mark messages as read. Sending replies, answers and new messages is available as an opt-in; see [Sending](#sending-opt-in).
+A local MCP server that lets an AI client read your Skoleplattform Oslo (Skolemelding) messages and attachments. It can also send replies, answers and absence reports, but only if you turn that on.
 
-This is a simple local version that runs on your own computer. `list_messages` shows at most 100 messages. It can search for words in the messages and list only unread messages, messages with a yes/no question, or absence messages; there is no date-range search yet. If you know a message ID, `get_message` can also find older messages by scanning up to 1,500 inbox entries. There is no fixed date cutoff in this code, but how far back it can reach depends on the Skolemelding service and how many newer messages you have.
+**Unofficial.** Not made by or affiliated with Oslo kommune or the makers of Skoleplattform. It uses undocumented endpoints that can change without notice.
 
-When the school asks for a yes/no answer, the message includes `question` with the question text. When it asks parents to confirm that they have read it, the message includes `readConfirmationRequested`. With sending turned on, the MCP can answer both; otherwise use the Skolemelding app.
+## Quick start
 
-Each message lists the children it is about. If you have more than one child at an Oslo school, `list_children` shows their names, and `list_messages` takes a `child` (first name or full name) to list only that child's messages. This has only been tested on an account with one child; see [issue #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) if you can help test it with several.
-
-At some Oslo schools, email notifications no longer include message contents or attachments. This MCP makes it easier to retrieve them from Skolemelding and use them in an agent workflow. You are responsible for deciding whether to share school information with ChatGPT or other cloud-based or commercial AI services.
-
-## Example: put a school event on a calendar
-
-An email notification titled “Ny Skolemelding” says a new school message is available, but does not include its contents. An assistant can use this MCP to find and read the message, then download any attachments that contain event details (with `include_content: true` if the client cannot read local files).
-
-For example, a message says there will be a maths assessment on Tuesday morning and asks pupils to eat breakfast and arrive on time. The assistant can add an all-day calendar event for Tuesday with those instructions in the description. It should not invent a start time, and it should check for an existing event before creating one. If the Skolemelding session has expired, the assistant can ask the user to refresh it with `npm run login` and retry afterward.
-
-## Install
-
-Install Node.js 20 or later and Google Chrome. In Terminal, open this project folder and run:
+You need Node.js 20 or later and Google Chrome.
 
 ```sh
+git clone https://github.com/kristoffervp/skolemelding-mcp.git
+cd skolemelding-mcp
 npm install
 npm run login
 ```
 
-Complete the ID-porten sign-in in Chrome. Run `npm test` to check the server without using your account.
+`npm run login` opens Chrome for the ID-porten sign-in. Then add the server to your AI client as a local (stdio) server. For Claude Desktop, in `claude_desktop_config.json`:
 
-## Add to an AI client
+```json
+{
+  "mcpServers": {
+    "skolemelding": {
+      "command": "node",
+      "args": ["/full/path/to/skolemelding-mcp/src/server.js"]
+    }
+  }
+}
+```
 
-Add the server to your client as a local (stdio) MCP server. Use `node` as the command (the full path from `command -v node` if the client cannot find it) and the full path to this project's `src/server.js` as the only argument. See the setup guide for [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp) or [Grok Build](https://docs.x.ai/build/features/mcp-servers). AI clients in a web browser cannot use a local server.
+If the client can't find `node`, use the full path from `command -v node`. Setup guides: [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp), [Grok Build](https://docs.x.ai/build/features/mcp-servers). AI clients in a web browser can't use a local server. `npm test` checks the server without touching your account.
 
-Each tool describes the shape of its result (`outputSchema`) and returns it as `structuredContent` as well as JSON text. Clients that let the model write code against MCP tools, such as Cloudflare's Code Mode, can use this to know what each tool returns.
-
-## Sending (opt-in)
-
-Sending is off by default. Set `SKOLEMELDING_ALLOW_SEND=1` in the MCP client settings to add seven tools:
+## Tools
 
 | Tool | What it does |
 | --- | --- |
-| `list_recipients` | Staff you can write to about a child, the child's own teachers first |
-| `prepare_reply` | A reply to a received message, in its thread (or a new thread to the sender) |
-| `prepare_answer` | `ja` or `nei` to the school's yes/no question |
-| `prepare_read_confirmation` | Confirm that you have read a message, when the school asks |
-| `prepare_message` | A new message to at most 5 staff from `list_recipients` |
-| `prepare_absence` | An absence report («Melding om fravær»): today or tomorrow (whole day), or dates (`YYYY-MM-DD`) with optional times (`HH:MM`); the start at most a month back |
+| `list_children` | Your children and their schools |
+| `list_messages` | Up to 100 received messages, newest first, with a preview. Filters: `search`, `child`, `unread_only`, `questions_only`, `absence_only` |
+| `get_message` | One message and its replies as plain text (`include_html` adds the HTML). Finds older messages by ID by scanning up to 1,500 inbox entries |
+| `get_attachment` | Saves an attachment in `.data/attachments/` and returns the path (`include_content` also returns the file) |
+
+Reading never marks a message as read. A message has `question` when the school asks a yes/no question, and `readConfirmationRequested` when it asks you to confirm that you have read it. Each message lists the children it is about. Results are returned as `structuredContent` described by an `outputSchema`, and as JSON text.
+
+Clients that can't read local files, such as Claude Desktop and the ChatGPT app, need `include_content: true` to see an attachment. Unusual file types are saved with `.download` added, and on macOS and Windows saved files are marked as downloaded, so the system warns before opening them.
+
+So far this has only been tested on an account with one child. See [issue #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) if you can test with more.
+
+## Sending (opt-in)
+
+Set `SKOLEMELDING_ALLOW_SEND=1` (in `"env"` in the client config) to add these tools:
+
+| Tool | What it does |
+| --- | --- |
+| `list_recipients` | Lists the staff you can write to about a child, the child's own teachers first |
+| `prepare_reply` | Prepares a reply to a message, in its thread, or as a new thread to the sender |
+| `prepare_answer` | Prepares `ja` or `nei` to a yes/no question |
+| `prepare_read_confirmation` | Prepares a confirmation that you have read a message |
+| `prepare_message` | Prepares a new message to at most 5 staff from `list_recipients` |
+| `prepare_absence` | Prepares an absence report («Melding om fravær»): `today`, `tomorrow`, or dates (`YYYY-MM-DD`) with optional times (`HH:MM`) |
 | `send_prepared` | Sends what a prepare tool prepared |
 
-Nothing is sent in one step. A prepare tool checks the message (replies allowed, question not yet answered, recipients you may write to) and returns exactly what would be sent, with a one-time code. `send_prepared` sends only that, once; the code expires after 10 minutes. The AI client should show you the preview and ask before it calls `send_prepared`, and the tool is marked as one that cannot be undone, so clients that ask before such tools will ask you. Everything sent is logged in `.data/sent.jsonl`.
+Every send takes two steps. A prepare tool checks the request and returns exactly what would be sent, with a one-time code. Nothing has been sent at that point. `send_prepared` sends it once, and the code expires after 10 minutes. `send_prepared` is marked as an action that can't be undone, so clients that ask before such actions will ask you. Everything sent is logged in `.data/sent.jsonl`.
 
-Replies that start a new thread, new messages and absence reports can include the child's other parents (`include_other_parents`), like «Kopi til» in the app. Text is sent as plain text (new messages as simple paragraphs); attachments and images are not supported. After an answer or read confirmation, the MCP reads the message again and reports `verified`. The read confirmation uses the same request as the web portal's answer form; if `verified` is false, check in the app.
+- `include_other_parents` sends a copy to the child's other parents, like «Kopi til» in the app. For replies, Skolemelding only allows it when the reply starts a new thread.
+- Text only. Attachments and images are not supported.
+- After an answer or read confirmation, the server reads the message again and reports `verified`.
+- A message can contain text meant to make the AI client send something. Read the preview, and leave sending off when you don't need it.
 
-The tools use the endpoints of the Skoleplattform web portal, which accept the same sign-in as the app. They have been tried on an account with one child. A message or attachment can contain text meant to make the AI client send something: the tool descriptions say to send only what you asked for, but keep sending off when you don't need it, and read the preview.
+## Example: a school event in your calendar
 
-## Attachments and configuration
+At some schools the email notification no longer includes the message. An assistant can use this server to find and read the message and its attachments, then add the event to your calendar. It should not make up a start time, and should check for an existing event first.
 
-`get_attachment` saves the file in `.data/attachments/` and returns its path, name, type, and size. The tool result only contains the file itself when the tool is called with `include_content: true`; images are then returned as images and other files as embedded resources. Clients that cannot read local files, such as the ChatGPT desktop app or Claude Desktop, need `include_content: true` to see what an attachment says. Clients that can read local files can open the saved file without it.
+## Configuration
 
-Files that are not common documents, images, audio, video or ZIP archives are saved with `.download` added to the name, so they are not opened or run by mistake. On macOS and Windows, saved attachments are also marked as downloaded from the internet, so the system warns before opening them.
-
-`get_message` returns the message and its replies as plain text; add `include_html: true` to also get the original HTML. Messages are reused for up to five minutes, so `unread` can lag behind after you read a message in the app.
-
-Version 0.3.0 changed these defaults. Earlier versions always returned attachments as `base64` and messages with `bodyHtml`.
-
-To change the defaults, set these environment variables in the MCP client settings (and in Terminal for `npm run login`):
+Set these in the client config (and in Terminal for `npm run login`):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SKOLEMELDING_ALLOW_SEND` | off | `1` adds the sending tools; see [Sending](#sending-opt-in) |
-| `SKOLEMELDING_DATA_DIR` | `.data` in this project | Sign-in file, saved attachments and the log of sent messages |
-| `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` in the data folder | Saved sign-in |
-| `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` in the data folder | Where `get_attachment` saves files |
-| `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` on Windows) | Browser used for sign-in |
-| `SKOLEMELDING_PLAYWRIGHT_PATH` | `playwright` from `node_modules` | Playwright installation to use |
+| `SKOLEMELDING_ALLOW_SEND` | off | `1` adds the sending tools |
+| `SKOLEMELDING_DATA_DIR` | `.data` in this folder | Sign-in, attachments and the log of sent items |
+| `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` in the data folder | The saved sign-in |
+| `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` in the data folder | Where attachments are saved |
+| `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` on Windows) | Browser for the sign-in |
+| `SKOLEMELDING_PLAYWRIGHT_PATH` | `playwright` in `node_modules` | Playwright installation |
 | `SKOLEMELDING_APP_VERSION` | `6.0.6` | App version sent to Skolemelding |
-| `SKOLEMELDING_OIDC_CLIENT_ID`, `SKOLEMELDING_TOKEN_CLIENT_ID` | Values from the official app | Sign-in client IDs |
+| `SKOLEMELDING_OIDC_CLIENT_ID`, `SKOLEMELDING_TOKEN_CLIENT_ID` | From the official app | Sign-in client IDs |
 
-The sign-in imitates the official Skolemelding Foresatte app. If Skolemelding starts rejecting sign-ins or refreshes after an app update, set `SKOLEMELDING_APP_VERSION` to the version in the current app store listing and run `npm run login` again.
+## Troubleshooting
+
+- **"Not signed in" or "sign-in has expired".** Run `npm run login` again.
+- **Sign-in or refresh is rejected after an app update.** The sign-in imitates the Skolemelding Foresatte app. Set `SKOLEMELDING_APP_VERSION` to the version in the app store, then run `npm run login`.
+- **The client can't start the server.** Use full paths for both `node` and `src/server.js`.
+- **An attachment is refused.** The school may have removed it.
+- **`unread` is out of date.** Messages are cached for five minutes.
 
 ## Security and privacy
 
-This MCP runs locally and does not open a network port. An AI client you connect can still retrieve school messages and attachments from your account. Content used with a cloud AI service may be sent to that service. Messages may also contain text intended to influence the agent. The MCP removes invisible characters and text hidden in the message HTML, and its tool descriptions tell the client to treat message text as information, not instructions, but this cannot stop every attempt. Use clients you trust, review tool calls, and never share the sign-in files in `.data/`. Saved attachments stay in the attachment folder until you delete them. Attachment paths returned to the AI client include your user name on this computer.
-
-Signing in registers this computer as a device on your Skolemelding account, the same way the mobile app does. It sends the operating system name and kernel version (for example `darwin|25.6.0`), the app version, and a random device ID created at sign-in.
-
-`npm run login` uses a new, empty browser profile and deletes it when sign-in is finished, so no ID-porten session or saved password is left behind. Versions before 0.5.1 kept a browser profile in `.data/mobile-browser-profile/`; you can delete that folder.
-
-The integration uses undocumented Skolemelding endpoints that may change. If your session expires, run `npm run login` again.
+- The server runs on your computer and opens no network port. Any AI client you connect can still read your school messages, and a cloud AI service receives what the client reads. Decide what you are willing to share.
+- Message text is passed on as information, not instructions. Invisible characters and hidden HTML are removed, but that can't stop every attempt to steer the AI. Use clients you trust and review tool calls.
+- `.data/` holds your sign-in. Never share it. Attachments stay there until you delete them, and the paths returned to the client include your user name.
+- Signing in registers this computer as a device on your account, as the app does. It sends the operating system and its version, the app version and a random device ID. The browser profile used for the sign-in is deleted afterwards.
+- To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Changelog
 
-### 0.7.0
-- Opt-in sending (`SKOLEMELDING_ALLOW_SEND=1`): reply in a thread, answer yes/no questions, confirm reading, write new messages to staff, and report absence, always in two steps (`prepare_…`, then `send_prepared` with a one-time code). Sent messages are logged in `.data/sent.jsonl`. Without the setting, the MCP is unchanged and read-only.
-
-### 0.6.1
-- `npm run login:mobile` is removed; use `npm run login`, which does the same.
-- The server reports the version from `package.json`. Internal cleanup, and a test that sometimes failed when the test files ran in parallel is fixed.
-
-### 0.6.0
-- Every tool has an `outputSchema` and returns its result as `structuredContent`, as well as JSON text.
-- `list_children` now returns `{ "children": [...] }` and `list_messages` returns `{ "messages": [...] }` instead of a bare list.
-
-### 0.5.1
-- `npm run login` no longer keeps a browser profile; `SKOLEMELDING_MOBILE_PROFILE` is removed. You can delete an old `.data/mobile-browser-profile/` folder.
-- Invisible characters and hidden text are removed from message text, and the tool descriptions say message text is information, not instructions.
-- Attachments of unusual types are saved with `.download` added, and saved attachments are marked as downloaded on macOS and Windows.
-- Messages no longer include `recipients`.
-- Only one inbox scan runs at a time, and a scan stops after 90 seconds. Error messages no longer show local file paths.
-- Sign-in requests no longer follow redirects, one malformed message can no longer break `list_messages` or `get_message`, and a refused attachment gives a clearer error. See [#12](https://github.com/kristoffervp/skolemelding-mcp/issues/12).
-- `unread_only` no longer lists chats that Skolemelding marks as read. The setup example is replaced by links to each client's guide.
-
-### 0.5.0
-- `list_messages` takes `search`, `unread_only`, `questions_only` and `absence_only`. Skolemelding does the searching and filtering.
-- Messages show the school's yes/no question (`question`) and whether it asks parents to confirm they have read the message (`readConfirmationRequested`).
-
-### 0.4.0 (2026-11-09)
-- New `list_children` tool, plus a `child` filter on `list_messages`.
-- Each message shows which children it is about.
-- `recipients` is left out when it is empty.
-
-### 0.3.0 (2026-11-09)
-- `get_attachment` saves the file locally and returns its path. The file itself is only returned with `include_content: true`.
-- `get_message` returns plain text, also for replies. The HTML is only returned with `include_html: true`.
-- The server handles several requests at once, and messages are cached for five minutes.
-- The app version and client IDs can be set with environment variables.
-- Tests run automatically on GitHub for every change.
-
-### 0.2.0 (2026-10-06)
-- First public version: `list_messages`, `get_message` and `get_attachment`.
+See [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/kristoffervp/skolemelding-mcp/releases).
 
 ## License
 
-The code and documentation use the [0BSD license](LICENSE): free for anyone to use, change, and share for any purpose, including commercial use, without attribution. The license does not cover the Skolemelding service or its data.
-
-To publish, use Git and check `git status --short` before committing. `.gitignore` excludes local sign-ins, research files, installed packages, and ZIP archives. Do not upload the whole folder manually.
+[0BSD](LICENSE): use, change and share it freely, also commercially, without attribution. It does not cover the Skolemelding service or its data.

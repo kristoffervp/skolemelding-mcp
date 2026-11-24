@@ -4,7 +4,7 @@
   "license": "0BSD",
   "private": true,
   "type": "module",
-  "description": "Personal MCP for Skoleplattform Oslo messages: reads, and sends only when turned on",
+  "description": "Unofficial local MCP server for Skoleplattform Oslo messages",
   "bin": {
     "skolemelding-mcp": "./src/server.js"
   },

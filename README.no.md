@@ -25,7 +25,7 @@ npm install
 npm run login
 ```
 
-`npm run login` åpner Chrome for innlogging med ID-porten. Legg så til serveren i KI-klienten som en lokal (stdio) server. For Claude Desktop, i `claude_desktop_config.json`:
+`npm run login` åpner Chrome for innlogging med ID-porten, og `npm test` sjekker serveren uten å bruke kontoen din. Legg så til serveren i KI-klienten som en lokal (stdio) server. For Claude Desktop, i `claude_desktop_config.json`:
 
 ```json
 {
@@ -37,8 +37,6 @@ npm run login
   }
 }
 ```
-
-Finner ikke klienten `node`, bruk hele stien fra `command -v node`. Oppsett: [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp), [Grok Build](https://docs.x.ai/build/features/mcp-servers). KI-klienter i nettleseren kan ikke bruke en lokal server. `npm test` sjekker serveren uten å bruke kontoen din.
 
 ## Verktøy
 
@@ -95,7 +93,7 @@ Settes i klientoppsettet (og i Terminal for `npm run login`):
 
 - **«Not signed in» eller «sign-in has expired».** Kjør `npm run login` på nytt.
 - **Innlogging eller fornying avvises etter en appoppdatering.** Innloggingen etterligner Skolemelding Foresatte-appen. Sett `SKOLEMELDING_APP_VERSION` til versjonen i appbutikken, og kjør `npm run login`.
-- **Klienten får ikke startet serveren.** Bruk hele stien til både `node` og `src/server.js`.
+- **Klienten får ikke startet serveren.** Bruk hele stien til både `node` (fra `command -v node`) og `src/server.js`.
 - **Et vedlegg blir avvist.** Skolen kan ha fjernet det.
 - **`unread` er utdatert.** Meldinger mellomlagres i fem minutter.
 

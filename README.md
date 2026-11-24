@@ -25,7 +25,7 @@ npm install
 npm run login
 ```
 
-`npm run login` opens Chrome for the ID-porten sign-in. Then add the server to your AI client as a local (stdio) server. For Claude Desktop, in `claude_desktop_config.json`:
+`npm run login` opens Chrome for the ID-porten sign-in, and `npm test` checks the server without using your account. Then add the server to your AI client as a local (stdio) server. For Claude Desktop, in `claude_desktop_config.json`:
 
 ```json
 {
@@ -37,8 +37,6 @@ npm run login
   }
 }
 ```
-
-If the client can't find `node`, use the full path from `command -v node`. Setup guides: [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp), [Grok Build](https://docs.x.ai/build/features/mcp-servers). AI clients in a web browser can't use a local server. `npm test` checks the server without touching your account.
 
 ## Tools
 
@@ -95,7 +93,7 @@ Set these in the client config (and in Terminal for `npm run login`):
 
 - **"Not signed in" or "sign-in has expired".** Run `npm run login` again.
 - **Sign-in or refresh is rejected after an app update.** The sign-in imitates the Skolemelding Foresatte app. Set `SKOLEMELDING_APP_VERSION` to the version in the app store, then run `npm run login`.
-- **The client can't start the server.** Use full paths for both `node` and `src/server.js`.
+- **The client can't start the server.** Use full paths for both `node` (from `command -v node`) and `src/server.js`.
 - **An attachment is refused.** The school may have removed it.
 - **`unread` is out of date.** Messages are cached for five minutes.
 

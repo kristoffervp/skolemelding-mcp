@@ -37,7 +37,7 @@ Each tool describes the shape of its result (`outputSchema`) and returns it as `
 
 ## Sending (opt-in)
 
-Sending is off by default. Set `SKOLEMELDING_ALLOW_SEND=1` in the MCP client settings to add six tools:
+Sending is off by default. Set `SKOLEMELDING_ALLOW_SEND=1` in the MCP client settings to add seven tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -46,11 +46,12 @@ Sending is off by default. Set `SKOLEMELDING_ALLOW_SEND=1` in the MCP client set
 | `prepare_answer` | `ja` or `nei` to the school's yes/no question |
 | `prepare_read_confirmation` | Confirm that you have read a message, when the school asks |
 | `prepare_message` | A new message to at most 5 staff from `list_recipients` |
+| `prepare_absence` | An absence report («Melding om fravær»): today or tomorrow (whole day), or dates (`YYYY-MM-DD`) with optional times (`HH:MM`); the start at most a month back |
 | `send_prepared` | Sends what a prepare tool prepared |
 
 Nothing is sent in one step. A prepare tool checks the message (replies allowed, question not yet answered, recipients you may write to) and returns exactly what would be sent, with a one-time code. `send_prepared` sends only that, once; the code expires after 10 minutes. The AI client should show you the preview and ask before it calls `send_prepared`, and the tool is marked as one that cannot be undone, so clients that ask before such tools will ask you. Everything sent is logged in `.data/sent.jsonl`.
 
-Text is sent as plain text (new messages as simple paragraphs); attachments and images are not supported. After an answer or read confirmation, the MCP reads the message again and reports `verified`. The read confirmation uses the same request as the web portal's answer form; if `verified` is false, check in the app.
+Replies that start a new thread, new messages and absence reports can include the child's other parents (`include_other_parents`), like «Kopi til» in the app. Text is sent as plain text (new messages as simple paragraphs); attachments and images are not supported. After an answer or read confirmation, the MCP reads the message again and reports `verified`. The read confirmation uses the same request as the web portal's answer form; if `verified` is false, check in the app.
 
 The tools use the endpoints of the Skoleplattform web portal, which accept the same sign-in as the app. They have been tried on an account with one child. A message or attachment can contain text meant to make the AI client send something: the tool descriptions say to send only what you asked for, but keep sending off when you don't need it, and read the preview.
 
@@ -92,7 +93,7 @@ The integration uses undocumented Skolemelding endpoints that may change. If you
 ## Changelog
 
 ### 0.7.0
-- Opt-in sending (`SKOLEMELDING_ALLOW_SEND=1`): reply in a thread, answer yes/no questions, confirm reading, and write new messages to staff, always in two steps (`prepare_…`, then `send_prepared` with a one-time code). Sent messages are logged in `.data/sent.jsonl`. Without the setting, the MCP is unchanged and read-only.
+- Opt-in sending (`SKOLEMELDING_ALLOW_SEND=1`): reply in a thread, answer yes/no questions, confirm reading, write new messages to staff, and report absence, always in two steps (`prepare_…`, then `send_prepared` with a one-time code). Sent messages are logged in `.data/sent.jsonl`. Without the setting, the MCP is unchanged and read-only.
 
 ### 0.6.1
 - `npm run login:mobile` is removed; use `npm run login`, which does the same.

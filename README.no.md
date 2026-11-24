@@ -37,7 +37,7 @@ Hvert verktøy beskriver hvordan svaret ser ut (`outputSchema`), og returnerer d
 
 ## Sending (må slås på)
 
-Sending er av som standard. Sett `SKOLEMELDING_ALLOW_SEND=1` i innstillingene til MCP-klienten for å få seks verktøy til:
+Sending er av som standard. Sett `SKOLEMELDING_ALLOW_SEND=1` i innstillingene til MCP-klienten for å få sju verktøy til:
 
 | Verktøy | Hva det gjør |
 | --- | --- |
@@ -46,11 +46,12 @@ Sending er av som standard. Sett `SKOLEMELDING_ALLOW_SEND=1` i innstillingene ti
 | `prepare_answer` | `ja` eller `nei` på skolens ja/nei-spørsmål |
 | `prepare_read_confirmation` | Bekreft at du har lest en melding, når skolen ber om det |
 | `prepare_message` | Ny melding til høyst 5 ansatte fra `list_recipients` |
+| `prepare_absence` | Melding om fravær: i dag eller i morgen (hel dag), eller datoer (`ÅÅÅÅ-MM-DD`) med eventuelle klokkeslett (`TT:MM`); starten høyst en måned tilbake |
 | `send_prepared` | Sender det et prepare-verktøy har gjort klart |
 
 Ingenting sendes i ett steg. Et prepare-verktøy sjekker meldingen (svar tillatt, spørsmålet ikke besvart, mottakere du kan skrive til) og returnerer nøyaktig hva som vil bli sendt, med en engangskode. `send_prepared` sender bare det, én gang; koden går ut etter 10 minutter. KI-klienten skal vise deg forhåndsvisningen og spørre før den kaller `send_prepared`, og verktøyet er merket som et som ikke kan angres, så klienter som spør før slike verktøy, spør deg. Alt som sendes, logges i `.data/sent.jsonl`.
 
-Teksten sendes som ren tekst (nye meldinger som enkle avsnitt); vedlegg og bilder støttes ikke. Etter et svar eller en lesebekreftelse leser MCP-en meldingen på nytt og melder `verified`. Lesebekreftelsen bruker samme forespørsel som svarskjemaet i nettportalen; er `verified` usann, sjekk i appen.
+Svar som starter en ny tråd, nye meldinger og fraværsmeldinger kan sendes i kopi til barnets andre foresatte (`include_other_parents`), som «Kopi til» i appen. Teksten sendes som ren tekst (nye meldinger som enkle avsnitt); vedlegg og bilder støttes ikke. Etter et svar eller en lesebekreftelse leser MCP-en meldingen på nytt og melder `verified`. Lesebekreftelsen bruker samme forespørsel som svarskjemaet i nettportalen; er `verified` usann, sjekk i appen.
 
 Verktøyene bruker endepunktene til Skoleplattforms nettportal, som godtar den samme innloggingen som appen. De er prøvd på en konto med ett barn. En melding eller et vedlegg kan inneholde tekst som skal få KI-klienten til å sende noe: verktøybeskrivelsene sier at bare det du har bedt om, skal sendes, men la sending være av når du ikke trenger det, og les forhåndsvisningen.
 
@@ -92,7 +93,7 @@ Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis ø
 ## Endringslogg
 
 ### 0.7.0
-- Sending som må slås på (`SKOLEMELDING_ALLOW_SEND=1`): svar i en tråd, svar på ja/nei-spørsmål, bekreft at du har lest, og skriv nye meldinger til ansatte, alltid i to steg (`prepare_…`, så `send_prepared` med en engangskode). Sendte meldinger logges i `.data/sent.jsonl`. Uten innstillingen er MCP-en uendret og leser bare.
+- Sending som må slås på (`SKOLEMELDING_ALLOW_SEND=1`): svar i en tråd, svar på ja/nei-spørsmål, bekreft at du har lest, skriv nye meldinger til ansatte, og meld fravær, alltid i to steg (`prepare_…`, så `send_prepared` med en engangskode). Sendte meldinger logges i `.data/sent.jsonl`. Uten innstillingen er MCP-en uendret og leser bare.
 
 ### 0.6.1
 - `npm run login:mobile` er fjernet; bruk `npm run login`, som gjør det samme.

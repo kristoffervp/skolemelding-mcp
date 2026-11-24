@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { Portal } from '../src/portal.js';
-import { Sender } from '../src/sending.js';
+import { Sender, absenceTime } from '../src/sending.js';
 
 const child = { FirstName: 'Ada', LastName: 'Hansen', SchoolName: 'Nordpolen skole', UserName: 'ada01', SchoolCode: 'NPS' };
 const staff = [
@@ -157,4 +157,34 @@ test('the other parent gets a copy only when the reply starts a new thread and t
   await assert.rejects(sender.prepareReply({ message_id: '42', text: 'Takk!', include_other_parents: true }), /does not allow/);
   const plain = await sender.prepareReply({ message_id: '42', text: 'Takk!' });
   assert.equal('copyTo' in plain, false);
+});
+
+test('an absence report has the same text and fields as the app form, and goes only with send_prepared', async (t) => {
+  const { mobile, sender, dir } = await setup([]);
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const prepared = await sender.prepareAbsence({ when: 'dates', from_date: '2026-11-26', from_time: '08:00', to_time: '11:30', include_other_parents: true });
+  assert.deepEqual([prepared.action, prepared.child, prepared.absence, prepared.copyTo], ['absence', 'Ada Hansen', '26.11.2026 kl. 08:00 til 11:30', ['Per Hansen']]);
+  assert.equal(mobile.calls.post.length, 0);
+  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode });
+  assert.deepEqual(mobile.calls.post, [{ path: '/Api/message/', body: { Body: 'Elev: Ada Hansen \n Tidspunkt for fravær: 26.11.2026 kl. 08:00 til 11:30',
+    IsAbsenceReport: true, IsCreatedOnWeb: true, IsReplyAllowed: true, OnBehalfOf: 'ada01', SchoolId: 'NPS', IsOtherUserAdded: true,
+    IsSpecialMessage: false, HideReceivers: false } }]);
+  await assert.rejects(sender.prepareAbsence({ when: 'yesterday' }), /today.*tomorrow.*dates/);
+});
+
+test('absence times follow the app: whole days, date ranges, and times on one or several days', () => {
+  const now = Date.parse('2026-11-24T23:30:00Z');   // 00:30 on 25 November in Oslo
+  assert.equal(absenceTime({ when: 'today' }, now), '25.11.2026 (Hel dag)');
+  assert.equal(absenceTime({ when: 'tomorrow' }, now), '26.11.2026 (Hel dag)');
+  assert.equal(absenceTime({ when: 'tomorrow' }, Date.parse('2026-10-24T22:30:00Z')), '26.10.2026 (Hel dag)', 'the night the clocks go back');
+  assert.equal(absenceTime({ when: 'dates', from_date: '2026-11-26', to_date: '2026-11-27' }, now), '26.11.2026 til 27.11.2026');
+  assert.equal(absenceTime({ when: 'dates', from_date: '2026-11-26' }, now), '26.11.2026 til 26.11.2026');
+  assert.equal(absenceTime({ when: 'dates', from_date: '2026-11-26', to_date: '2026-11-27', from_time: '12:00', to_time: '10:00' }, now),
+    '26.11.2026 kl. 12:00 til 27.11.2026 kl. 10:00');
+  for (const [args, why] of [[{ when: 'dates', from_date: '2026-10-01' }, /a month back/], [{ when: 'dates', from_date: '2026-11-26', from_time: '08:00' }, /both/],
+    [{ when: 'dates', from_date: '2026-11-26', from_time: '12:00', to_time: '10:00' }, /end before/], [{ when: 'dates', from_date: '2026-11-27', to_date: '2026-11-26' }, /before from_date/],
+    [{ when: 'today', from_date: '2026-11-26' }, /only used with/], [{ when: 'dates', from_date: '2026-02-30' }, /date like/],
+    [{ when: 'dates', from_date: '2026-11-26', from_time: '24:00', to_time: '25:00' }, /time like/]]) {
+    assert.throws(() => absenceTime(args, now), why, JSON.stringify(args));
+  }
 });

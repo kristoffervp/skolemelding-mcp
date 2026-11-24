@@ -28,6 +28,48 @@ function messageId(id) {
   return id.replace(/^0+(?=\d)/, '');
 }
 
+// Dates as the school sees them: the calendar day in Oslo, written dd.mm.yyyy like the web portal.
+function osloDate(ms) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo' }).format(ms);
+}
+function norwegian(iso) {
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+}
+function isoDate(value, name) {
+  const date = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00Z`) : null;
+  if (!date || date.toISOString().slice(0, 10) !== value) throw new Error(`${name} must be a date like 2026-11-30.`);
+  return value;
+}
+function time(value, name) {
+  if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error(`${name} must be a time like 08:00.`);
+  return value;
+}
+
+// The text the web portal's "Melding om fravær" form sends: today/tomorrow as whole days, or dates with optional times.
+export function absenceTime({ when, from_date: fromDate, to_date: toDate, from_time: fromTime, to_time: toTime }, now) {
+  if (when === 'today' || when === 'tomorrow') {
+    if ([fromDate, toDate, fromTime, toTime].some((v) => v !== undefined)) throw new Error(`Dates and times are only used with when: "dates".`);
+    const today = osloDate(now);
+    // Tomorrow from the calendar day, not now + 24 h, which lands on the same day just after midnight when the clocks go back.
+    const day = when === 'tomorrow' ? new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : today;
+    return `${norwegian(day)} (Hel dag)`;
+  }
+  if (when !== 'dates') throw new Error('when must be "today", "tomorrow" or "dates".');
+  const from = isoDate(fromDate, 'from_date');
+  const to = toDate === undefined ? from : isoDate(toDate, 'to_date');
+  if ((fromTime === undefined) !== (toTime === undefined)) throw new Error('Give both from_time and to_time, or neither.');
+  const earliest = osloDate(new Date(now).setMonth(new Date(now).getMonth() - 1));
+  if (from < earliest) throw new Error(`The absence can start at most a month back (${norwegian(earliest)}).`);
+  if (fromTime === undefined) {
+    if (to < from) throw new Error('to_date cannot be before from_date.');
+    return `${norwegian(from)} til ${norwegian(to)}`;
+  }
+  const [start, end] = [time(fromTime, 'from_time'), time(toTime, 'to_time')];
+  if (`${to}T${end}` < `${from}T${start}`) throw new Error('The absence cannot end before it starts.');
+  return from === to ? `${norwegian(from)} kl. ${start} til ${end}` : `${norwegian(from)} kl. ${start} til ${norwegian(to)} kl. ${end}`;
+}
+
 // The web portal's editor sends HTML; plain text is escaped and line breaks are kept.
 function html(value) {
   const escaped = value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -176,6 +218,20 @@ export class Sender {
     return this.#prepare('message', { path: '/Api/message/', body: request }, {
       child: found.name, to: users.map((user) => clean(user.FullName)), ...(others ? { copyTo } : {}), subject: header, text: message,
     }, null);
+  }
+
+  async prepareAbsence({ child, include_other_parents: others = false, ...when } = {}) {
+    if (typeof others !== 'boolean') throw new Error('include_other_parents must be true or false.');
+    const period = absenceTime(when, this.#now());
+    const found = await this.#portal.childFor(child);
+    const copyTo = others ? await this.#otherParents(found.userName) : [];
+    if (others && !copyTo.length) throw new Error('No other parent is registered for this child.');
+    // Same text and fields as the portal's form; the school receives it as an absence report.
+    const body = `Elev: ${found.name} \n Tidspunkt for fravær: ${period}`;
+    const request = { Body: body, IsAbsenceReport: true, IsCreatedOnWeb: true, IsReplyAllowed: true, OnBehalfOf: found.userName,
+      SchoolId: found.schoolCode, IsOtherUserAdded: others, IsSpecialMessage: false, HideReceivers: false };
+    return this.#prepare('absence', { path: '/Api/message/', body: request },
+      { child: found.name, absence: period, ...(others ? { copyTo } : {}), text: body }, null);
   }
 
   async sendPrepared({ confirmation_code: code } = {}) {

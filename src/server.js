@@ -44,14 +44,14 @@ const outputSchemas = {
     path: text('Where the file was saved on this computer.') }),
 };
 const preparedFields = {
-  action: text('reply, answer, confirm_read or message.'), messageId: text(), subject: text(), from: text(), children: texts(), child: text(),
+  action: text('reply, answer, confirm_read, message or absence.'), messageId: text(), subject: text(), from: text(), children: texts(), child: text(),
   to: texts('Who receives it.'), inThread: { type: 'boolean', description: 'The reply continues an existing thread.' }, text: text(),
-  question: text(), answer: text('Ja or Nei.'), copyTo: texts("The child's other parents, who can also read it."),
+  question: text(), answer: text('Ja or Nei.'), absence: text('When the child is absent, as the school sees it.'), copyTo: texts("The child's other parents, who can also read it."),
 };
 const preparedOptional = Object.keys(preparedFields).filter((key) => key !== 'action');
 outputSchemas.list_recipients = record({ child: text(), recipients: list(record({ username: text('Use in prepare_message.'), name: text(),
   groups: texts(), childsTeacher: { type: 'boolean', description: "One of the child's own teachers." } }), "The child's own teachers first.") });
-for (const name of ['prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message']) {
+for (const name of ['prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'prepare_absence']) {
   outputSchemas[name] = record({ ...preparedFields, confirmationCode: text('Pass to send_prepared after the parent approves.'),
     expiresInMinutes: { type: 'integer' }, note: text() }, preparedOptional);
 }
@@ -76,6 +76,11 @@ const sendTools = [
     inputSchema: { type: 'object', properties: { child: { type: 'string', minLength: 1 }, recipients: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1, maxItems: 5 },
       subject: { type: 'string', minLength: 1, maxLength: 200 }, text: { type: 'string', minLength: 1, maxLength: 5000 },
       include_other_parents: { type: 'boolean', default: false } }, required: ['recipients', 'subject', 'text'], additionalProperties: false } },
+  { name: 'prepare_absence', description: 'Prepare an absence report ("Melding om fravær") for a child, as in the app: when is "today" or "tomorrow" (whole day), or "dates" with from_date and to_date (YYYY-MM-DD; to_date defaults to from_date) and optionally both from_time and to_time (HH:MM). The start can be at most a month back. include_other_parents sends a copy to the child\'s other parents. The school receives it as an absence report.' + prepareNote,
+    inputSchema: { type: 'object', properties: { child: { type: 'string', minLength: 1 }, when: { type: 'string', enum: ['today', 'tomorrow', 'dates'] },
+      from_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, to_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+      from_time: { type: 'string', pattern: '^\\d{2}:\\d{2}$' }, to_time: { type: 'string', pattern: '^\\d{2}:\\d{2}$' },
+      include_other_parents: { type: 'boolean', default: false } }, required: ['when'], additionalProperties: false } },
   { name: 'send_prepared', description: 'Send something prepared by a prepare_ tool. Call it only after showing the parent exactly what will be sent and getting their approval. The code works once and expires after 10 minutes. Sending cannot be undone.',
     inputSchema: { type: 'object', properties: { confirmation_code: { type: 'string', pattern: '^[0-9a-f]{8}$' } }, required: ['confirmation_code'], additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true } },
@@ -117,6 +122,7 @@ const handlers = {
     prepare_answer: async (args) => structured(await sender.prepareAnswer(args)),
     prepare_read_confirmation: async (args) => structured(await sender.prepareReadConfirmation(args)),
     prepare_message: async (args) => structured(await sender.prepareMessage(args)),
+    prepare_absence: async (args) => structured(await sender.prepareAbsence(args)),
     send_prepared: async (args) => structured(await sender.sendPrepared(args)),
   } : {}),
   get_attachment: async (args) => {

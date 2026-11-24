@@ -186,11 +186,11 @@ test('sending tools exist only with SKOLEMELDING_ALLOW_SEND=1, and only send_pre
   try {
     const listed = await server.call('tools/list');
     assert.deepEqual(listed.result.tools.map(({ name }) => name), ['list_children', 'list_messages', 'get_message', 'get_attachment',
-      'list_recipients', 'prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'send_prepared']);
+      'list_recipients', 'prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'prepare_absence', 'send_prepared']);
     for (const tool of listed.result.tools) assert.equal(tool.outputSchema.type, 'object', `${tool.name} should describe its result`);
     const send = listed.result.tools.at(-1);
     assert.deepEqual(send.annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true });
-    for (const tool of listed.result.tools.slice(5, 9)) assert.match(tool.description, /Sends nothing/);
+    for (const tool of listed.result.tools.slice(5, 10)) assert.match(tool.description, /Sends nothing/);
     const unknownCode = await server.call('tools/call', { name: 'send_prepared', arguments: { confirmation_code: 'deadbeef' } });
     assert.equal(unknownCode.result.isError, true);
     assert.match(unknownCode.result.content[0].text, /Unknown or expired/);

@@ -167,7 +167,7 @@ test('saving replaces existing files and symlinks instead of writing through the
 
 const twoChildren = [
   { FirstName: 'Ada', LastName: 'Hansen', SchoolName: 'Nordpolen skole', UserName: 'ada01', SchoolCode: '1' },
-  { FirstName: 'Ola', LastName: 'Hansen', SchoolName: 'Sagene skole', UserName: 'ola02', SchoolCode: '2' },
+  { FirstName: 'Ola', LastName: 'Hansen', SchoolName: 'Sydpolen skole', UserName: 'ola02', SchoolCode: '2' },
 ];
 
 test('messages name their children and can be filtered by first or full name', async () => {
@@ -178,7 +178,7 @@ test('messages name their children and can be filtered by first or full name', a
   ], { children: twoChildren });
   const portal = new Portal({ mobile });
   assert.deepEqual(await portal.listChildren(), [
-    { name: 'Ada Hansen', school: 'Nordpolen skole' }, { name: 'Ola Hansen', school: 'Sagene skole' },
+    { name: 'Ada Hansen', school: 'Nordpolen skole' }, { name: 'Ola Hansen', school: 'Sydpolen skole' },
   ]);
   const all = await portal.listMessages(30);
   assert.deepEqual(all.map(({ id, children }) => [id, children]), [

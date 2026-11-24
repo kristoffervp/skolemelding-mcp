@@ -18,9 +18,11 @@
 !/src/mobile-auth.js
 !/src/mobile-client.js
 !/src/portal.js
+!/src/sending.js
 !/src/server.js
 !/test/
 /test/*
 !/test/mobile-auth.test.js
 !/test/portal.test.js
+!/test/sending.test.js
 !/test/server.test.js

@@ -2,11 +2,11 @@
 
 English · [Norsk](README.no.md)
 
-Read Skoleplattform Oslo messages and attachments through a local MCP server. Its four tools list your children, list messages, read a message, and download an attachment. They do not send replies or mark messages as read.
+Read Skoleplattform Oslo messages and attachments through a local MCP server. Its four tools list your children, list messages, read a message, and download an attachment. They do not send anything or mark messages as read. Sending replies, answers and new messages is available as an opt-in; see [Sending](#sending-opt-in).
 
 This is a simple local version that runs on your own computer. `list_messages` shows at most 100 messages. It can search for words in the messages and list only unread messages, messages with a yes/no question, or absence messages; there is no date-range search yet. If you know a message ID, `get_message` can also find older messages by scanning up to 1,500 inbox entries. There is no fixed date cutoff in this code, but how far back it can reach depends on the Skolemelding service and how many newer messages you have.
 
-When the school asks for a yes/no answer, the message includes `question` with the question text. When it asks parents to confirm that they have read it, the message includes `readConfirmationRequested`. The MCP cannot answer either one; use the Skolemelding app for that.
+When the school asks for a yes/no answer, the message includes `question` with the question text. When it asks parents to confirm that they have read it, the message includes `readConfirmationRequested`. With sending turned on, the MCP can answer both; otherwise use the Skolemelding app.
 
 Each message lists the children it is about. If you have more than one child at an Oslo school, `list_children` shows their names, and `list_messages` takes a `child` (first name or full name) to list only that child's messages. This has only been tested on an account with one child; see [issue #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) if you can help test it with several.
 
@@ -35,6 +35,25 @@ Add the server to your client as a local (stdio) MCP server. Use `node` as the c
 
 Each tool describes the shape of its result (`outputSchema`) and returns it as `structuredContent` as well as JSON text. Clients that let the model write code against MCP tools, such as Cloudflare's Code Mode, can use this to know what each tool returns.
 
+## Sending (opt-in)
+
+Sending is off by default. Set `SKOLEMELDING_ALLOW_SEND=1` in the MCP client settings to add six tools:
+
+| Tool | What it does |
+| --- | --- |
+| `list_recipients` | Staff you can write to about a child, the child's own teachers first |
+| `prepare_reply` | A reply to a received message, in its thread (or a new thread to the sender) |
+| `prepare_answer` | `ja` or `nei` to the school's yes/no question |
+| `prepare_read_confirmation` | Confirm that you have read a message, when the school asks |
+| `prepare_message` | A new message to at most 5 staff from `list_recipients` |
+| `send_prepared` | Sends what a prepare tool prepared |
+
+Nothing is sent in one step. A prepare tool checks the message (replies allowed, question not yet answered, recipients you may write to) and returns exactly what would be sent, with a one-time code. `send_prepared` sends only that, once; the code expires after 10 minutes. The AI client should show you the preview and ask before it calls `send_prepared`, and the tool is marked as one that cannot be undone, so clients that ask before such tools will ask you. Everything sent is logged in `.data/sent.jsonl`.
+
+Text is sent as plain text (new messages as simple paragraphs); attachments and images are not supported. After an answer or read confirmation, the MCP reads the message again and reports `verified`. The read confirmation uses the same request as the web portal's answer form; if `verified` is false, check in the app.
+
+The tools use the endpoints of the Skoleplattform web portal, which accept the same sign-in as the app. They have been tried on an account with one child. A message or attachment can contain text meant to make the AI client send something: the tool descriptions say to send only what you asked for, but keep sending off when you don't need it, and read the preview.
+
 ## Attachments and configuration
 
 `get_attachment` saves the file in `.data/attachments/` and returns its path, name, type, and size. The tool result only contains the file itself when the tool is called with `include_content: true`; images are then returned as images and other files as embedded resources. Clients that cannot read local files, such as the ChatGPT desktop app or Claude Desktop, need `include_content: true` to see what an attachment says. Clients that can read local files can open the saved file without it.
@@ -49,7 +68,8 @@ To change the defaults, set these environment variables in the MCP client settin
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SKOLEMELDING_DATA_DIR` | `.data` in this project | Sign-in file and saved attachments |
+| `SKOLEMELDING_ALLOW_SEND` | off | `1` adds the sending tools; see [Sending](#sending-opt-in) |
+| `SKOLEMELDING_DATA_DIR` | `.data` in this project | Sign-in file, saved attachments and the log of sent messages |
 | `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` in the data folder | Saved sign-in |
 | `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` in the data folder | Where `get_attachment` saves files |
 | `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` on Windows) | Browser used for sign-in |
@@ -70,6 +90,9 @@ Signing in registers this computer as a device on your Skolemelding account, the
 The integration uses undocumented Skolemelding endpoints that may change. If your session expires, run `npm run login` again.
 
 ## Changelog
+
+### 0.7.0
+- Opt-in sending (`SKOLEMELDING_ALLOW_SEND=1`): reply in a thread, answer yes/no questions, confirm reading, and write new messages to staff, always in two steps (`prepare_…`, then `send_prepared` with a one-time code). Sent messages are logged in `.data/sent.jsonl`. Without the setting, the MCP is unchanged and read-only.
 
 ### 0.6.1
 - `npm run login:mobile` is removed; use `npm run login`, which does the same.

@@ -87,7 +87,7 @@ function startServer({ env = {}, nodeArgs = [] } = {}) {
 
 test('MCP exposes only the four read tools and negotiates a protocol version', async () => {
   const server = startServer({
-    env: { SKOLEMELDING_MOBILE_AUTH_FILE: join(tmpdir(), `skolemelding-mcp-missing-${process.pid}.json`) },
+    env: { SKOLEMELDING_MOBILE_AUTH_FILE: join(tmpdir(), `skolemelding-mcp-missing-${process.pid}.json`), SKOLEMELDING_ALLOW_SEND: '' },
   });
   try {
     const initialized = await server.call('initialize', { protocolVersion: '2024-11-05' });
@@ -178,6 +178,24 @@ test('slow calls do not block ping, and attachment content uses MCP content type
   } finally {
     await server.stop();
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('sending tools exist only with SKOLEMELDING_ALLOW_SEND=1, and only send_prepared can send', async () => {
+  const server = startServer({ env: { SKOLEMELDING_MOBILE_AUTH_FILE: join(tmpdir(), `skolemelding-mcp-missing-${process.pid}.json`), SKOLEMELDING_ALLOW_SEND: '1' } });
+  try {
+    const listed = await server.call('tools/list');
+    assert.deepEqual(listed.result.tools.map(({ name }) => name), ['list_children', 'list_messages', 'get_message', 'get_attachment',
+      'list_recipients', 'prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'send_prepared']);
+    for (const tool of listed.result.tools) assert.equal(tool.outputSchema.type, 'object', `${tool.name} should describe its result`);
+    const send = listed.result.tools.at(-1);
+    assert.deepEqual(send.annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true });
+    for (const tool of listed.result.tools.slice(5, 9)) assert.match(tool.description, /Sends nothing/);
+    const unknownCode = await server.call('tools/call', { name: 'send_prepared', arguments: { confirmation_code: 'deadbeef' } });
+    assert.equal(unknownCode.result.isError, true);
+    assert.match(unknownCode.result.content[0].text, /Unknown or expired/);
+  } finally {
+    await server.stop();
   }
 });
 

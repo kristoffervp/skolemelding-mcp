@@ -70,6 +70,31 @@ export class MobileClient {
     return payload;
   }
 
+  async getJson(path) {
+    return (await this.#request(path, { method: 'GET', headers: { Accept: 'application/json' } })).json();
+  }
+
+  // Used only by sending (src/sending.js). The response may be empty or plain JSON true/false.
+  async postJson(path, body) {
+    const response = await this.#request(path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body),
+    });
+    const text = await response.text();
+    try { return text ? JSON.parse(text) : null; } catch { return text; }
+  }
+
+  // The web portal's search: unlike the app search it includes Author, FeedbackGiven and IsMessageConfirmed,
+  // which sending needs. sent: true searches the outbox.
+  async webSearchPage(page, pageSize, { sent = false } = {}) {
+    const payload = await this.postJson('/Api/MessageSearch', {
+      AuthorUserCategroy: '', FilterSender: [], Page: page, PageSize: pageSize, SearchInbox: !sent, SearchOrder: '', SearchTerm: '',
+      SearchSent: sent, FilterFavouriteMessages: false, FilterUnreadMessages: false, FilterFeedbackRequired: false,
+      FilterFeedbackIsQuestion: false, FilterIsAbsentMessage: false, ShowAbsentMessages: false,
+    });
+    if (!Array.isArray(payload?.Result)) throw new Error('Unexpected web message response format.');
+    return payload;
+  }
+
   async getChildren() {
     const response = await this.#request('/api/MyProfile/GetChildInfo', { method: 'GET', headers: { Accept: 'application/json' } });
     const payload = await response.json();

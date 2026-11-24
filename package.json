@@ -1,10 +1,10 @@
 {
   "name": "skolemelding-mcp",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "license": "0BSD",
   "private": true,
   "type": "module",
-  "description": "Personal, read-only MCP for Skoleplattform Oslo messages",
+  "description": "Personal MCP for Skoleplattform Oslo messages: reads, and sends only when turned on",
   "bin": {
     "skolemelding-mcp": "./src/server.js"
   },

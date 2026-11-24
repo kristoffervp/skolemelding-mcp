@@ -13,4 +13,5 @@ export function loadPlaywright() {
 
 export const browserChannel = process.env.SKOLEMELDING_BROWSER_CHANNEL || (process.platform === 'win32' ? 'msedge' : 'chrome');
 export const mobileAuthFilePath = resolve(process.env.SKOLEMELDING_MOBILE_AUTH_FILE || join(dataDir, 'mobile-auth.json'));
+export const sentLogPath = resolve(join(dataDir, 'sent.jsonl'));
 export const attachmentDirPath = resolve(process.env.SKOLEMELDING_ATTACHMENT_DIR || join(dataDir, 'attachments'));

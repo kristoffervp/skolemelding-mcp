@@ -71,6 +71,10 @@ The integration uses undocumented Skolemelding endpoints that may change. If you
 
 ## Changelog
 
+### 0.6.1
+- `npm run login:mobile` is removed; use `npm run login`, which does the same.
+- The server reports the version from `package.json`. Internal cleanup, and a test that sometimes failed when the test files ran in parallel is fixed.
+
 ### 0.6.0
 - Every tool has an `outputSchema` and returns its result as `structuredContent`, as well as JSON text.
 - `list_children` now returns `{ "children": [...] }` and `list_messages` returns `{ "messages": [...] }` instead of a bare list.

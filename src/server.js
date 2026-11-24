@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { Portal } from './portal.js';
 
 const portal = new Portal();
-const serverInfo = { name: 'skolemelding-mcp', version: '0.6.0' };
+const { name, version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const serverInfo = { name, version };
 const supportedVersions = new Set(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
@@ -119,4 +121,3 @@ for await (const line of input) {
   pending.add(task);
 }
 await Promise.allSettled(pending);
-await portal.close();

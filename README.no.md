@@ -71,6 +71,10 @@ Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis ø
 
 ## Endringslogg
 
+### 0.6.1
+- `npm run login:mobile` er fjernet; bruk `npm run login`, som gjør det samme.
+- Serveren oppgir versjonen fra `package.json`. Intern opprydding, og en test som av og til feilet når testfilene kjørte samtidig, er rettet.
+
 ### 0.6.0
 - Alle verktøy har `outputSchema` og returnerer svaret som `structuredContent`, i tillegg til JSON-tekst.
 - `list_children` returnerer nå `{ "children": [...] }` og `list_messages` returnerer `{ "messages": [...] }` i stedet for en liste alene.

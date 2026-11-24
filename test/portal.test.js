@@ -284,11 +284,14 @@ test('hidden HTML, image text and invisible characters do not reach the client',
 test('deeply nested HTML neither breaks listing nor blocks the server', async () => {
   const deep = '<div>'.repeat(200_000) + 'x' + '</div>'.repeat(200_000);
   const portal = new Portal({ mobile: fakeMobile([message(2, { Body: deep }), message(1)]) });
-  const started = Date.now();
+  // CPU time, not wall time: test files run in parallel, so the clock also counts time spent on other files.
+  const started = process.cpuUsage();
   const listed = await portal.listMessages(30);
   assert.equal(listed.length, 2);
   assert.equal(typeof (await portal.getMessage('2')).bodyText, 'string');
-  assert.ok(Date.now() - started < 3000, `took ${Date.now() - started} ms`);
+  const { user, system } = process.cpuUsage(started);
+  const ms = Math.round((user + system) / 1000);
+  assert.ok(ms < 3000, `took ${ms} ms of CPU time`);
 });
 
 test('risky attachment types are renamed and marked as downloaded', async (t) => {

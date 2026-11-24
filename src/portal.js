@@ -3,9 +3,9 @@ import { extname, join } from 'node:path';
 import { convert } from 'html-to-text';
 import { attachmentDirPath } from './browser.js';
 import { writePrivateFile } from './files.js';
+import { portalOrigin as origin } from './mobile-auth.js';
 import { MobileClient } from './mobile-client.js';
 
-const origin = 'https://portal.skoleplattform.no';
 const pageSize = 15;
 const maxPages = 100;
 // Messages seen by a search are reused for this long, so read state can lag by up to five minutes.
@@ -101,8 +101,6 @@ export class Portal {
     this.#attachmentDir = attachmentDir;
   }
 
-  async close() {}
-
   #remember(messages) {
     const now = Date.now();
     for (const [id, entry] of this.#cache) if (now - entry.at >= cacheTtl) this.#cache.delete(id);
@@ -130,7 +128,7 @@ export class Portal {
       const payload = await this.#mobile.searchPage(page, pageSize, filters);
       messages.push(...payload.Result);
       this.#remember(payload.Result);
-      if (id && messages.some((message) => String(message.Id) === id)) break;
+      if (id && this.#cached(id)) break;
       if (!id && messages.filter(matches).length >= limit) break;
       if (messages.length >= Number(payload.TotalMatching) || payload.Result.length < pageSize) break;
     }

@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { browserChannel, loadPlaywright, mobileAuthFilePath } from './browser.js';
 import { writePrivateFile } from './files.js';
 
-const portalOrigin = 'https://portal.skoleplattform.no';
+export const portalOrigin = 'https://portal.skoleplattform.no';
 // Values used by the official Skolemelding Foresatte app. Override them if an app update makes the portal reject these.
 const clientId = process.env.SKOLEMELDING_OIDC_CLIENT_ID || 'd12dad8a-f092-4a96-8a37-371590825d22';
 const redirectUri = 'com.cgi.oslomelding.foresatte://oauth';
@@ -14,6 +14,8 @@ const tokenClientId = process.env.SKOLEMELDING_TOKEN_CLIENT_ID || 'consoleAPP';
 const appVersion = process.env.SKOLEMELDING_APP_VERSION || '6.0.6';
 
 export const outdatedHint = `If this keeps happening, the app version (${appVersion}) may be outdated; see SKOLEMELDING_APP_VERSION in the README.`;
+
+const expiresAt = (seconds) => Date.now() + Math.max(60, Number(seconds) || 28 * 60) * 1000;
 
 async function jsonRequest(url, options) {
   let response;
@@ -113,7 +115,7 @@ export async function refreshMobileAuth(auth, { preferProvided = false } = {}) {
       accessToken: response.access_token,
       refreshToken: response.refresh_token || current.refreshToken,
       userName: response.userName || current.userName,
-      expiresAt: Date.now() + Math.max(60, Number(response.expires_in) || 28 * 60) * 1000,
+      expiresAt: expiresAt(response.expires_in),
     };
     await saveMobileAuth(updated);
     return updated;
@@ -190,7 +192,7 @@ export async function loginMobile() {
   const auth = {
     accessToken: mobile.access_token, refreshToken: mobile.refresh_token,
     userName: mobile.userName, deviceId,
-    expiresAt: Date.now() + Math.max(60, Number(mobile.expires_in) || 28 * 60) * 1000,
+    expiresAt: expiresAt(mobile.expires_in),
   };
   await jsonRequest(`${portalOrigin}/api/deviceinfo/save`, {
     method: 'POST',

@@ -74,6 +74,37 @@ Every send takes two steps. A prepare tool checks the request and returns exactl
 - After an answer or read confirmation, the server reads the message again and reports `verified`.
 - A message can contain text meant to make the AI client send something. Read the preview, and leave sending off when you don't need it.
 
+## How it works
+
+The server runs on your computer and talks to the AI client over stdio. Reading and sending both use the sign-in from `npm run login`, saved in `.data/`.
+
+```mermaid
+flowchart LR
+  client["AI client<br/>Claude Desktop, ChatGPT …"]
+  subgraph computer["Your computer"]
+    server["MCP server<br/>src/server.js"]
+    read["Read tools<br/>portal.js"]
+    send["Sending tools<br/>sending.js<br/>(only with SKOLEMELDING_ALLOW_SEND=1)"]
+    http["HTTP client<br/>mobile-client.js"]
+    login["npm run login<br/>Chrome via Playwright"]
+    data[(".data/<br/>sign-in, attachments,<br/>sent.jsonl")]
+  end
+  idporten["ID-porten"]
+  portal["Skoleplattform Oslo<br/>portal.skoleplattform.no"]
+  client <-->|"MCP over stdio"| server
+  server --> read
+  server --> send
+  read --> http
+  send --> http
+  http <-->|"HTTPS with the app sign-in"| portal
+  login -->|"sign in"| idporten
+  login -->|"app sign-in"| portal
+  login -->|"saves"| data
+  http -.->|"reads and renews the sign-in"| data
+  read -.->|"saves attachments"| data
+  send -.->|"logs what is sent"| data
+```
+
 ## Configuration
 
 Set these in the client config (and in Terminal for `npm run login`):

@@ -74,10 +74,6 @@ All sending skjer i to steg. Et prepare-verktøy sjekker forespørselen og viser
 - Etter et ja/nei-svar eller en lesebekreftelse leser serveren meldingen på nytt og melder `verified`.
 - En melding kan inneholde tekst som skal få KI-klienten til å sende noe. Les forhåndsvisningen, og la sending være av når du ikke trenger den.
 
-## Eksempel: en skolehendelse i kalenderen
-
-Ved noen skoler har e-postvarselet ikke lenger selve meldingen. En assistent kan bruke serveren til å finne og lese meldingen og vedleggene, og legge hendelsen i kalenderen. Den bør ikke finne på et klokkeslett, og bør først sjekke om hendelsen allerede finnes.
-
 ## Innstillinger
 
 Settes i klientoppsettet (og i Terminal for `npm run login`):

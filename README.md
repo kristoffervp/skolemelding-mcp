@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/banner.jpg" alt="Skolemelding MCP: a phone sends a school message with an attachment, for Skoleplattform Oslo" width="100%"></p>
+
 # Skolemelding MCP
 
 English · [Norsk](README.no.md)

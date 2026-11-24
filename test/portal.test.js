@@ -291,7 +291,8 @@ test('deeply nested HTML neither breaks listing nor blocks the server', async ()
   assert.equal(typeof (await portal.getMessage('2')).bodyText, 'string');
   const { user, system } = process.cpuUsage(started);
   const ms = Math.round((user + system) / 1000);
-  assert.ok(ms < 3000, `took ${ms} ms of CPU time`);
+  // The limit catches a conversion that hangs, not a slow machine: a GitHub runner has needed over 3 s.
+  assert.ok(ms < 10_000, `took ${ms} ms of CPU time`);
 });
 
 test('risky attachment types are renamed and marked as downloaded', async (t) => {

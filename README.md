@@ -1,6 +1,6 @@
 <p align="center"><img src="assets/banner.jpg" alt="Skolemelding MCP: a phone sends a school message with an attachment, for Skoleplattform Oslo" width="100%"></p>
 
-# Skolemelding MCP
+<h1 align="center">Skolemelding MCP</h1>
 
 [![Test](https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml)
 [![Release](https://img.shields.io/github/v/release/kristoffervp/skolemelding-mcp)](https://github.com/kristoffervp/skolemelding-mcp/releases)

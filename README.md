@@ -74,10 +74,6 @@ Every send takes two steps. A prepare tool checks the request and returns exactl
 - After an answer or read confirmation, the server reads the message again and reports `verified`.
 - A message can contain text meant to make the AI client send something. Read the preview, and leave sending off when you don't need it.
 
-## Example: a school event in your calendar
-
-At some schools the email notification no longer includes the message. An assistant can use this server to find and read the message and its attachments, then add the event to your calendar. It should not make up a start time, and should check for an existing event first.
-
 ## Configuration
 
 Set these in the client config (and in Terminal for `npm run login`):

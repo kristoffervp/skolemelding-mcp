@@ -2,139 +2,117 @@
 
 # Skolemelding MCP
 
+[![Test](https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/kristoffervp/skolemelding-mcp/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/kristoffervp/skolemelding-mcp)](https://github.com/kristoffervp/skolemelding-mcp/releases)
+[![Lisens: 0BSD](https://img.shields.io/badge/license-0BSD-blue)](LICENSE)
+
 Norsk · [English](README.md)
 
-Les meldinger og vedlegg fra Skoleplattform Oslo med en lokal MCP-server. De fire verktøyene viser barna dine, viser meldinger, leser en melding og laster ned et vedlegg. De sender ingenting og markerer ikke meldinger som lest. Å sende svar og nye meldinger kan slås på; se [Sending](#sending-må-slås-på).
+En lokal MCP-server som lar en KI-klient lese meldingene og vedleggene dine i Skoleplattform Oslo (Skolemelding). Den kan også sende svar, ja/nei-svar og fraværsmeldinger, men bare hvis du slår det på.
 
-Dette er en enkel lokal versjon som kjører på din egen datamaskin. `list_messages` viser maks 100 meldinger. Den kan søke etter ord i meldingene og vise bare uleste meldinger, meldinger med et ja/nei-spørsmål eller fraværsmeldinger; søk på datointervall finnes ikke ennå. Hvis du kjenner meldings-ID-en, kan `get_message` også finne eldre meldinger ved å bla gjennom opptil 1 500 innboksmeldinger. Koden har ingen fast datogrense, men hvor langt tilbake den når, avhenger av Skolemelding-tjenesten og hvor mange nyere meldinger du har.
+**Uoffisiell.** Ikke laget av eller knyttet til Oslo kommune eller dem som lager Skoleplattform. Den bruker udokumenterte endepunkter som kan endres uten varsel.
 
-Når skolen ber om et ja/nei-svar, har meldingen `question` med spørsmålsteksten. Når skolen ber foresatte bekrefte at de har lest meldingen, har den `readConfirmationRequested`. Med sending slått på kan MCP-en svare på begge; ellers bruker du Skolemelding-appen.
+## Kom i gang
 
-Hver melding viser hvilke barn den gjelder. Har du flere barn i Osloskolen, viser `list_children` navnene deres, og `list_messages` tar imot `child` (fornavn eller fullt navn) for å vise bare meldingene til det barnet. Dette er bare testet på en konto med ett barn; se [sak #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) hvis du kan hjelpe til med å teste med flere.
-
-Ved enkelte skoler i Osloskolen sendes ikke lenger meldingsinnhold og vedlegg på e-post. Denne MCP-en gjør det enklere å hente dem fra Skolemelding og bruke dem i en agentisk arbeidsflyt. Du er selv ansvarlig for å vurdere om skoleinformasjon skal deles med ChatGPT eller andre skybaserte eller kommersielle KI-tjenester.
-
-## Eksempel: legg en skolehendelse i kalenderen
-
-Et e-postvarsel med tittelen «Ny Skolemelding» sier at en ny skolemelding er tilgjengelig, men inneholder ikke selve meldingen. En assistent kan bruke denne MCP-en til å finne og lese meldingen, og laste ned eventuelle vedlegg med detaljer om hendelsen (med `include_content: true` hvis klienten ikke kan lese lokale filer).
-
-En melding kan for eksempel si at det blir kartleggingsprøve i regning tirsdag morgen, og minne elevene på å spise frokost og møte presis. Assistenten kan da legge inn en heldagshendelse på tirsdag og ta med påminnelsene i beskrivelsen. Den bør ikke finne på et klokkeslett, og bør sjekke om hendelsen allerede finnes. Hvis økten i Skolemelding har utløpt, kan assistenten be brukeren fornye den med `npm run login` og prøve igjen etterpå.
-
-## Installer
-
-Installer Node.js 20 eller nyere og Google Chrome. Åpne prosjektmappen i Terminal og kjør:
+Du trenger Node.js 20 eller nyere og Google Chrome.
 
 ```sh
+git clone https://github.com/kristoffervp/skolemelding-mcp.git
+cd skolemelding-mcp
 npm install
 npm run login
 ```
 
-Fullfør innloggingen via ID-porten i Chrome. Kjør `npm test` for å kontrollere serveren uten å bruke kontoen din.
+`npm run login` åpner Chrome for innlogging med ID-porten. Legg så til serveren i KI-klienten som en lokal (stdio) server. For Claude Desktop, i `claude_desktop_config.json`:
 
-## Legg til i en KI-klient
+```json
+{
+  "mcpServers": {
+    "skolemelding": {
+      "command": "node",
+      "args": ["/full/sti/til/skolemelding-mcp/src/server.js"]
+    }
+  }
+}
+```
 
-Legg til serveren som en lokal MCP-server (stdio) i klienten din. Bruk `node` som kommando (den fullstendige stien fra `command -v node` hvis klienten ikke finner den) og den fullstendige stien til prosjektets `src/server.js` som eneste argument. Se oppsettet for [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp) eller [Grok Build](https://docs.x.ai/build/features/mcp-servers). KI-klienter i nettleseren kan ikke bruke en lokal server.
+Finner ikke klienten `node`, bruk hele stien fra `command -v node`. Oppsett: [Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [ChatGPT](https://learn.chatgpt.com/docs/extend/mcp), [Grok Build](https://docs.x.ai/build/features/mcp-servers). KI-klienter i nettleseren kan ikke bruke en lokal server. `npm test` sjekker serveren uten å bruke kontoen din.
 
-Hvert verktøy beskriver hvordan svaret ser ut (`outputSchema`), og returnerer det som `structuredContent` i tillegg til JSON-tekst. Klienter der modellen skriver kode mot MCP-verktøy, for eksempel Cloudflares Code Mode, kan bruke dette til å vite hva hvert verktøy returnerer.
-
-## Sending (må slås på)
-
-Sending er av som standard. Sett `SKOLEMELDING_ALLOW_SEND=1` i innstillingene til MCP-klienten for å få sju verktøy til:
+## Verktøy
 
 | Verktøy | Hva det gjør |
 | --- | --- |
-| `list_recipients` | Ansatte du kan skrive til om et barn, barnets egne lærere først |
-| `prepare_reply` | Svar på en mottatt melding, i tråden (eller en ny tråd til avsenderen) |
-| `prepare_answer` | `ja` eller `nei` på skolens ja/nei-spørsmål |
-| `prepare_read_confirmation` | Bekreft at du har lest en melding, når skolen ber om det |
-| `prepare_message` | Ny melding til høyst 5 ansatte fra `list_recipients` |
-| `prepare_absence` | Melding om fravær: i dag eller i morgen (hel dag), eller datoer (`ÅÅÅÅ-MM-DD`) med eventuelle klokkeslett (`TT:MM`); starten høyst en måned tilbake |
+| `list_children` | Barna dine og skolene deres |
+| `list_messages` | Inntil 100 mottatte meldinger, nyeste først, med et utdrag. Filtre: `search`, `child`, `unread_only`, `questions_only`, `absence_only` |
+| `get_message` | Én melding med svarene som ren tekst (`include_html` gir også HTML). Finner eldre meldinger på ID ved å bla gjennom inntil 1 500 meldinger i innboksen |
+| `get_attachment` | Lagrer et vedlegg i `.data/attachments/` og gir stien (`include_content` gir også selve filen) |
+
+Å lese en melding markerer den aldri som lest. En melding har `question` når skolen stiller et ja/nei-spørsmål, og `readConfirmationRequested` når skolen ber deg bekrefte at du har lest den. Hver melding viser hvilke barn den gjelder. Svarene kommer som `structuredContent` beskrevet av et `outputSchema`, og som JSON-tekst.
+
+Klienter som ikke kan lese lokale filer, som Claude Desktop og ChatGPT-appen, trenger `include_content: true` for å se et vedlegg. Uvanlige filtyper lagres med `.download` lagt til, og på macOS og Windows merkes lagrede filer som lastet ned, så systemet advarer før de åpnes.
+
+Foreløpig er dette bare testet på en konto med ett barn. Se [sak #10](https://github.com/kristoffervp/skolemelding-mcp/issues/10) hvis du kan teste med flere.
+
+## Sending (må slås på)
+
+Sett `SKOLEMELDING_ALLOW_SEND=1` (i `"env"` i klientoppsettet) for å få disse verktøyene:
+
+| Verktøy | Hva det gjør |
+| --- | --- |
+| `list_recipients` | Viser de ansatte du kan skrive til om et barn, barnets egne lærere først |
+| `prepare_reply` | Gjør klart et svar på en melding, i tråden, eller som en ny tråd til avsenderen |
+| `prepare_answer` | Gjør klart `ja` eller `nei` på et ja/nei-spørsmål |
+| `prepare_read_confirmation` | Gjør klart en bekreftelse på at du har lest en melding |
+| `prepare_message` | Gjør klart en ny melding til høyst 5 ansatte fra `list_recipients` |
+| `prepare_absence` | Gjør klart en melding om fravær: `today`, `tomorrow`, eller datoer (`ÅÅÅÅ-MM-DD`) med eventuelle klokkeslett (`TT:MM`) |
 | `send_prepared` | Sender det et prepare-verktøy har gjort klart |
 
-Ingenting sendes i ett steg. Et prepare-verktøy sjekker meldingen (svar tillatt, spørsmålet ikke besvart, mottakere du kan skrive til) og returnerer nøyaktig hva som vil bli sendt, med en engangskode. `send_prepared` sender bare det, én gang; koden går ut etter 10 minutter. KI-klienten skal vise deg forhåndsvisningen og spørre før den kaller `send_prepared`, og verktøyet er merket som et som ikke kan angres, så klienter som spør før slike verktøy, spør deg. Alt som sendes, logges i `.data/sent.jsonl`.
+All sending skjer i to steg. Et prepare-verktøy sjekker forespørselen og viser nøyaktig hva som vil bli sendt, med en engangskode. Da er ingenting sendt ennå. `send_prepared` sender det én gang, og koden går ut etter 10 minutter. `send_prepared` er merket som en handling som ikke kan angres, så klienter som spør før slike handlinger, spør deg. Alt som sendes, logges i `.data/sent.jsonl`.
 
-Svar som starter en ny tråd, nye meldinger og fraværsmeldinger kan sendes i kopi til barnets andre foresatte (`include_other_parents`), som «Kopi til» i appen. Teksten sendes som ren tekst (nye meldinger som enkle avsnitt); vedlegg og bilder støttes ikke. Etter et svar eller en lesebekreftelse leser MCP-en meldingen på nytt og melder `verified`. Lesebekreftelsen bruker samme forespørsel som svarskjemaet i nettportalen; er `verified` usann, sjekk i appen.
+- `include_other_parents` sender en kopi til barnets andre foresatte, som «Kopi til» i appen. For svar tillater Skolemelding det bare når svaret starter en ny tråd.
+- Bare tekst. Vedlegg og bilder støttes ikke.
+- Etter et ja/nei-svar eller en lesebekreftelse leser serveren meldingen på nytt og melder `verified`.
+- En melding kan inneholde tekst som skal få KI-klienten til å sende noe. Les forhåndsvisningen, og la sending være av når du ikke trenger den.
 
-Verktøyene bruker endepunktene til Skoleplattforms nettportal, som godtar den samme innloggingen som appen. De er prøvd på en konto med ett barn. En melding eller et vedlegg kan inneholde tekst som skal få KI-klienten til å sende noe: verktøybeskrivelsene sier at bare det du har bedt om, skal sendes, men la sending være av når du ikke trenger det, og les forhåndsvisningen.
+## Eksempel: en skolehendelse i kalenderen
 
-## Vedlegg og innstillinger
+Ved noen skoler har e-postvarselet ikke lenger selve meldingen. En assistent kan bruke serveren til å finne og lese meldingen og vedleggene, og legge hendelsen i kalenderen. Den bør ikke finne på et klokkeslett, og bør først sjekke om hendelsen allerede finnes.
 
-`get_attachment` lagrer filen i `.data/attachments/` og returnerer sti, navn, filtype og størrelse. Selve filen er bare med i svaret fra verktøyet når det kalles med `include_content: true`; bilder returneres da som bilder og andre filer som innebygde ressurser. Klienter som ikke kan lese lokale filer, som ChatGPT-appen eller Claude Desktop, trenger `include_content: true` for å se hva et vedlegg inneholder. Klienter som kan lese lokale filer, kan åpne den lagrede filen uten.
+## Innstillinger
 
-Filer som ikke er vanlige dokumenter, bilder, lyd, video eller ZIP-arkiver, lagres med `.download` lagt til i navnet, slik at de ikke åpnes eller kjøres ved et uhell. På macOS og Windows merkes lagrede vedlegg også som lastet ned fra internett, slik at systemet advarer før de åpnes.
+Settes i klientoppsettet (og i Terminal for `npm run login`):
 
-`get_message` returnerer meldingen og svarene som ren tekst; legg til `include_html: true` for også å få original-HTML. Meldinger gjenbrukes i opptil fem minutter, så `unread` kan henge etter hvis du leser en melding i appen.
-
-Versjon 0.3.0 endret disse standardene. Tidligere versjoner returnerte alltid vedlegg som `base64` og meldinger med `bodyHtml`.
-
-Du kan endre standardverdiene med disse miljøvariablene i innstillingene til MCP-klienten (og i Terminal for `npm run login`):
-
-| Variabel | Standard | Formål |
+| Variabel | Standard | Brukes til |
 | --- | --- | --- |
-| `SKOLEMELDING_ALLOW_SEND` | av | `1` gir sendeverktøyene; se [Sending](#sending-må-slås-på) |
-| `SKOLEMELDING_DATA_DIR` | `.data` i prosjektet | Innloggingsfil, lagrede vedlegg og loggen over sendte meldinger |
-| `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` i datamappen | Lagret innlogging |
-| `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` i datamappen | Hvor `get_attachment` lagrer filer |
-| `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` på Windows) | Nettleser for innlogging |
-| `SKOLEMELDING_PLAYWRIGHT_PATH` | `playwright` fra `node_modules` | Playwright-installasjonen som brukes |
+| `SKOLEMELDING_ALLOW_SEND` | av | `1` gir sendeverktøyene |
+| `SKOLEMELDING_DATA_DIR` | `.data` i denne mappen | Innlogging, vedlegg og loggen over det som er sendt |
+| `SKOLEMELDING_MOBILE_AUTH_FILE` | `mobile-auth.json` i datamappen | Den lagrede innloggingen |
+| `SKOLEMELDING_ATTACHMENT_DIR` | `attachments` i datamappen | Hvor vedlegg lagres |
+| `SKOLEMELDING_BROWSER_CHANNEL` | `chrome` (`msedge` på Windows) | Nettleser for innloggingen |
+| `SKOLEMELDING_PLAYWRIGHT_PATH` | `playwright` i `node_modules` | Playwright-installasjonen |
 | `SKOLEMELDING_APP_VERSION` | `6.0.6` | Appversjonen som sendes til Skolemelding |
-| `SKOLEMELDING_OIDC_CLIENT_ID`, `SKOLEMELDING_TOKEN_CLIENT_ID` | Verdier fra den offisielle appen | Klient-ID-er for innlogging |
+| `SKOLEMELDING_OIDC_CLIENT_ID`, `SKOLEMELDING_TOKEN_CLIENT_ID` | Fra den offisielle appen | Klient-ID-er for innloggingen |
 
-Innloggingen etterligner den offisielle appen Skolemelding Foresatte. Hvis Skolemelding begynner å avvise innlogging eller fornyelse etter en appoppdatering, sett `SKOLEMELDING_APP_VERSION` til versjonen som står i app-butikken nå, og kjør `npm run login` på nytt.
+## Feilsøking
+
+- **«Not signed in» eller «sign-in has expired».** Kjør `npm run login` på nytt.
+- **Innlogging eller fornying avvises etter en appoppdatering.** Innloggingen etterligner Skolemelding Foresatte-appen. Sett `SKOLEMELDING_APP_VERSION` til versjonen i appbutikken, og kjør `npm run login`.
+- **Klienten får ikke startet serveren.** Bruk hele stien til både `node` og `src/server.js`.
+- **Et vedlegg blir avvist.** Skolen kan ha fjernet det.
+- **`unread` er utdatert.** Meldinger mellomlagres i fem minutter.
 
 ## Sikkerhet og personvern
 
-Denne MCP-en kjører lokalt og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel hente skolemeldinger og vedlegg fra kontoen din. Innhold som brukes i en KI-tjeneste i skyen, kan bli sendt til tjenesten. Meldinger kan også inneholde tekst som forsøker å påvirke agenten. MCP-en fjerner usynlige tegn og tekst som er skjult i meldingens HTML, og verktøybeskrivelsene ber klienten behandle meldingstekst som informasjon, ikke instruksjoner, men det kan ikke stoppe alle forsøk. Bruk klienter du stoler på, gjennomgå verktøykall, og del aldri innloggingsfilene i `.data/`. Lagrede vedlegg blir liggende i vedleggsmappen til du sletter dem. Stiene til vedlegg som sendes til KI-klienten, inneholder brukernavnet ditt på denne datamaskinen.
-
-Innloggingen registrerer denne datamaskinen som en enhet på Skolemelding-kontoen din, slik mobilappen gjør. Den sender navnet på operativsystemet og kjerneversjonen (for eksempel `darwin|25.6.0`), appversjonen og en tilfeldig enhets-ID som lages ved innlogging.
-
-`npm run login` bruker en ny, tom nettleserprofil og sletter den når innloggingen er ferdig, så ingen ID-porten-økt eller lagret passord blir liggende igjen. Versjoner før 0.5.1 beholdt en nettleserprofil i `.data/mobile-browser-profile/`; den mappen kan du slette.
-
-Løsningen bruker udokumenterte Skolemelding-endepunkter som kan endres. Hvis økten utløper, kjør `npm run login` på nytt.
+- Serveren kjører på din datamaskin og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel lese skolemeldingene dine, og en KI-tjeneste i skyen får det klienten leser. Vurder selv hva du vil dele.
+- Meldingstekst sendes videre som informasjon, ikke instruksjoner. Usynlige tegn og skjult HTML fjernes, men det kan ikke stoppe alle forsøk på å styre KI-en. Bruk klienter du stoler på, og se over verktøykallene.
+- `.data/` inneholder innloggingen din. Del den aldri. Vedlegg ligger der til du sletter dem, og stiene klienten får, inneholder brukernavnet ditt.
+- Innloggingen registrerer denne datamaskinen som en enhet på kontoen din, slik appen gjør. Den sender operativsystem og versjon, appversjon og en tilfeldig enhets-ID. Nettleserprofilen som brukes til innloggingen, slettes etterpå.
+- Se [SECURITY.md](SECURITY.md) for å melde fra om sikkerhetshull.
 
 ## Endringslogg
 
-### 0.7.0
-- Sending som må slås på (`SKOLEMELDING_ALLOW_SEND=1`): svar i en tråd, svar på ja/nei-spørsmål, bekreft at du har lest, skriv nye meldinger til ansatte, og meld fravær, alltid i to steg (`prepare_…`, så `send_prepared` med en engangskode). Sendte meldinger logges i `.data/sent.jsonl`. Uten innstillingen er MCP-en uendret og leser bare.
-
-### 0.6.1
-- `npm run login:mobile` er fjernet; bruk `npm run login`, som gjør det samme.
-- Serveren oppgir versjonen fra `package.json`. Intern opprydding, og en test som av og til feilet når testfilene kjørte samtidig, er rettet.
-
-### 0.6.0
-- Alle verktøy har `outputSchema` og returnerer svaret som `structuredContent`, i tillegg til JSON-tekst.
-- `list_children` returnerer nå `{ "children": [...] }` og `list_messages` returnerer `{ "messages": [...] }` i stedet for en liste alene.
-
-### 0.5.1
-- `npm run login` beholder ikke lenger en nettleserprofil; `SKOLEMELDING_MOBILE_PROFILE` er fjernet. En gammel `.data/mobile-browser-profile/`-mappe kan slettes.
-- Usynlige tegn og skjult tekst fjernes fra meldingstekst, og verktøybeskrivelsene sier at meldingstekst er informasjon, ikke instruksjoner.
-- Vedlegg av uvanlige filtyper lagres med `.download` lagt til, og lagrede vedlegg merkes som lastet ned på macOS og Windows.
-- Meldinger har ikke lenger `recipients`.
-- Bare ett søk gjennom innboksen kjører om gangen, og et søk stopper etter 90 sekunder. Feilmeldinger viser ikke lenger lokale filstier.
-- Innloggingen følger ikke lenger omdirigeringer, én feilformet melding kan ikke lenger stoppe `list_messages` eller `get_message`, og et avvist vedlegg gir en tydeligere feilmelding. Se [#12](https://github.com/kristoffervp/skolemelding-mcp/issues/12).
-- `unread_only` viser ikke lenger chatter som Skolemelding har merket som lest. Oppsettseksempelet er erstattet med lenker til oppsettet for hver klient.
-
-### 0.5.0
-- `list_messages` tar imot `search`, `unread_only`, `questions_only` og `absence_only`. Søket og filtreringen gjøres av Skolemelding.
-- Meldinger viser skolens ja/nei-spørsmål (`question`) og om skolen ber foresatte bekrefte at de har lest meldingen (`readConfirmationRequested`).
-
-### 0.4.0 (2026-11-09)
-- Nytt verktøy, `list_children`, og et `child`-filter i `list_messages`.
-- Hver melding viser hvilke barn den gjelder.
-- `recipients` utelates når feltet er tomt.
-
-### 0.3.0 (2026-11-09)
-- `get_attachment` lagrer filen lokalt og returnerer stien. Selve filen returneres bare med `include_content: true`.
-- `get_message` returnerer ren tekst, også for svar. HTML returneres bare med `include_html: true`.
-- Serveren håndterer flere forespørsler samtidig, og meldinger mellomlagres i fem minutter.
-- Appversjon og klient-ID-er kan settes med miljøvariabler.
-- Testene kjøres automatisk på GitHub ved hver endring.
-
-### 0.2.0 (2026-10-06)
-- Første offentlige versjon: `list_messages`, `get_message` og `get_attachment`.
+Se [CHANGELOG.no.md](CHANGELOG.no.md) og [Releases](https://github.com/kristoffervp/skolemelding-mcp/releases).
 
 ## Lisens
 
-Koden og dokumentasjonen har [0BSD-lisens](LICENSE): alle kan bruke, endre og dele dem gratis til alle formål, også kommersielt, uten krav om kreditering. Lisensen gjelder ikke Skolemelding-tjenesten eller innholdet der.
-
-Ved publisering: bruk Git og kontroller `git status --short` før du lagrer endringene. `.gitignore` utelater lokale innlogginger, research-filer, installerte pakker og ZIP-arkiver. Ikke last opp hele mappen manuelt.
+[0BSD](LICENSE): bruk, endre og del fritt, også kommersielt, uten krav om kreditering. Lisensen gjelder ikke Skolemelding-tjenesten eller innholdet der.

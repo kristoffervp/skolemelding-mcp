@@ -265,7 +265,8 @@ export class Sender {
   // approval is the check; anything but a clear yes stops it.
   async #confirmed(action, preview) {
     const lines = Object.entries(preview).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
-    const answer = await this.#confirm(`Skolemelding: ${action}\n${lines.join('\n')}`.slice(0, 4_000));
+    const question = `Skolemelding: ${action}\n${lines.join('\n')}`;
+    const answer = await this.#confirm(question.length > 4_000 ? `${question.slice(0, 3_999)}…` : question);
     if (answer === false) throw new PublicError('Not sent: it was not confirmed in the dialog. Prepare it again if the parent still wants it.');
   }
 

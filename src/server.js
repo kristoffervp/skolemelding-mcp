@@ -171,6 +171,11 @@ async function handle(request) {
     return error(validId(request?.id) ? request?.id ?? null : null, -32600, 'Invalid request');
   }
   const { id, method } = request;
+  // A cancelled tool call must not send after all: an answer that arrives later counts as no.
+  if (method === 'notifications/cancelled') {
+    for (const settle of asked.values()) settle(null);
+    return asked.clear();
+  }
   if (id === undefined) return;
   try {
     const params = request.params && typeof request.params === 'object' ? request.params : {};

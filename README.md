@@ -66,8 +66,14 @@ Set `SKOLEMELDING_ALLOW_SEND=1` (in `"env"` in the client config) to add these t
 | `prepare_message` | Prepares a new message to at most 5 staff from `list_recipients` |
 | `prepare_absence` | Prepares an absence report («Melding om fravær»): `today`, `tomorrow`, or dates (`YYYY-MM-DD`) with optional times (`HH:MM`) |
 | `send_prepared` | Sends what a prepare tool prepared |
+| `mark_read` | Marks a message and its unread replies as read, in one step. It can't be marked unread again |
 
-Every send takes two steps. A prepare tool checks the request and returns exactly what would be sent, with a one-time code. Nothing has been sent at that point. `send_prepared` sends it once, and the code expires after 10 minutes. `send_prepared` is marked as an action that can't be undone, so clients that ask before such actions will ask you. Everything sent is logged in `.data/sent.jsonl`.
+Every send takes two steps. A prepare tool checks the request and returns exactly what would be sent, with a one-time code. Nothing has been sent at that point. `send_prepared` sends it once, and the code expires after 10 minutes. `send_prepared` must also repeat the one-line `summary` from the prepare step, so your client's approval prompt shows what is sent. Everything sent is logged in `.data/sent.jsonl`.
+
+The server can't know that you approved, so:
+- If your client supports MCP elicitation (Claude Code does), the server asks you itself before `send_prepared` and `mark_read` go through. The AI can't answer that question for you.
+- Otherwise your client's own approval prompt is the only check. Never choose «Always allow» for `send_prepared` or `mark_read`.
+- Prepared codes belong to the running server, so a code from one chat works in another chat in the same client for 10 minutes.
 
 - `include_other_parents` sends a copy to the child's other parents, like «Kopi til» in the app. For replies, Skolemelding only allows it when the reply starts a new thread.
 - Text only. Attachments and images are not supported.
@@ -80,7 +86,8 @@ The server runs on your computer and talks to the AI client over stdio. Reading 
 
 ```mermaid
 flowchart LR
-  client["AI client<br/>Claude Desktop, ChatGPT …"]
+  you(["You"])
+  client["AI client"]
   subgraph computer["Your computer"]
     server["MCP server<br/>src/server.js"]
     read["Read tools<br/>portal.js"]
@@ -91,9 +98,11 @@ flowchart LR
   end
   idporten["ID-porten"]
   portal["Skoleplattform Oslo<br/>portal.skoleplattform.no"]
+  you <-->|"asks, sees the preview"| client
   client <-->|"MCP over stdio"| server
   server --> read
-  server --> send
+  server -->|"prepare → summary and code,<br/>then send_prepared"| send
+  send -.->|"asks you to confirm<br/>(MCP elicitation)"| client
   read --> http
   send --> http
   http <-->|"HTTPS with the app sign-in"| portal

@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.md)
 
+## 0.9.0 (2026-11-25)
+
+- `prepare_absence` sender emnet «Melding om fravær» og de tomme feltene appen sender, og avviser når ingen lærer er koblet til barnet på skolen, slik appen gjør: meldingen ville ikke nådd noen.
+- `prepare_message` med `include_other_parents` avviser når ingen annen forelder er registrert, som svar- og fraværsverktøyene.
+- Nytt `mark_read` (med `SKOLEMELDING_ALLOW_SEND=1`): merker en melding og ulest svar på den som lest. Skolemelding kan ikke merke den som ulest igjen.
+- Når klienten støtter MCP-elicitation, spør `send_prepared` og `mark_read` forelderen direkte i klienten før noe sendes, så tekst i en melding ikke kan få KI-en til både å gjøre klart og godkjenne en sending. `send_prepared` trenger også `summary` fra prepare-steget, så godkjenningsspørsmålet i klienten viser innholdet.
+- En sending som aldri får svar, sier at den kan ha blitt sendt, i stedet for å be deg prøve igjen. En mislykket skriving til loggen gjør ikke lenger en fullført sending til en feil. Flere usynlige tegn fjernes (tegn som ser blanke ut, rekker av variantvelgere).
+
 ## 0.8.0 (2026-11-25)
 
 - Bare feilmeldinger serveren selv har skrevet, når klienten. Før kunne et uventet svar bli sitert i feilen, for eksempel starten på et svar som ikke var JSON.

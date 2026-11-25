@@ -84,7 +84,10 @@ export class Sender {
   #now;
   #pending = new Map();
 
-  constructor({ mobile, portal, log = sentLogPath, now = Date.now }) {
+  #confirm;
+
+  constructor({ mobile, portal, log = sentLogPath, now = Date.now, confirm = async () => null }) {
+    this.#confirm = confirm;
     this.#mobile = mobile;
     this.#portal = portal;
     this.#log = log;
@@ -119,9 +122,13 @@ export class Sender {
     for (const [code, entry] of this.#pending) if (entry.expiresAt <= now) this.#pending.delete(code);
     if (this.#pending.size >= maxPending) throw new PublicError('Too many prepared messages waiting. Send or let them expire first.');
     const code = randomBytes(4).toString('hex');
-    this.#pending.set(code, { action, request, preview, verify, expiresAt: now + codeTtl });
-    return { action, ...preview, confirmationCode: code, expiresInMinutes: codeTtl / 60_000,
-      note: 'Nothing has been sent. Show this to the parent, and call send_prepared with the code only after they approve it.' };
+    // send_prepared must repeat this line, so a client's approval prompt shows what is sent, not only a code.
+    const summary = [action, preview.child || preview.children?.join(', '), preview.to?.length && `to ${preview.to.join(', ')}`,
+      preview.subject, preview.absence, preview.answer, preview.text && `«${preview.text.replace(/\s+/g, ' ').slice(0, 80)}»`]
+      .filter(Boolean).join(' · ').slice(0, 300);
+    this.#pending.set(code, { action, request, preview, verify, summary, expiresAt: now + codeTtl });
+    return { action, ...preview, summary, confirmationCode: code, expiresInMinutes: codeTtl / 60_000,
+      note: 'Nothing has been sent. Show this to the parent, and call send_prepared with the code and the summary only after they approve it.' };
   }
 
   // Staff a parent can write to for this child, as the portal returns them (IsMine: the child's own teachers).
@@ -216,6 +223,7 @@ export class Sender {
       FeedbackQuestionRequired: false, FeedbackRequired: false, FeedbackQuestion: '', IsOtherUserAdded: others, OnBehalfOfNameForTeacher: '',
       IsSpecialMessage: false, HideReceivers: false, HideAuthorName: false };
     const copyTo = others ? await this.#otherParents(found.userName) : [];
+    if (others && !copyTo.length) throw new PublicError('No other parent is registered for this child.');
     return this.#prepare('message', { path: '/Api/message/', body: request }, {
       child: found.name, to: users.map((user) => clean(user.FullName)), ...(others ? { copyTo } : {}), subject: header, text: message,
     }, null);
@@ -225,23 +233,63 @@ export class Sender {
     if (typeof others !== 'boolean') throw new PublicError('include_other_parents must be true or false.');
     const period = absenceTime(when, this.#now());
     const found = await this.#portal.childFor(child);
+    if (found.teacherConnected === false) throw new PublicError('The absence report has no recipients: no teacher is connected to the child at the school. Contact the school.');
     const copyTo = others ? await this.#otherParents(found.userName) : [];
     if (others && !copyTo.length) throw new PublicError('No other parent is registered for this child.');
-    // Same text and fields as the portal's form; the school receives it as an absence report.
+    // Same text as the portal's form, with the subject and empty fields the app also sends.
     const body = `Elev: ${found.name} \n Tidspunkt for fravær: ${period}`;
-    const request = { Body: body, IsAbsenceReport: true, IsCreatedOnWeb: true, IsReplyAllowed: true, OnBehalfOf: found.userName,
-      SchoolId: found.schoolCode, IsOtherUserAdded: others, IsSpecialMessage: false, HideReceivers: false };
+    const request = { Attachments: [], Body: body, ExistingFileIds: [], FeedbackQuestionRequired: false, FeedbackRequired: false,
+      GroupRecipients: [], Header: 'Melding om fravær', IsAbsenceReport: true, IsCreatedOnWeb: true, IsReplyAllowed: true,
+      IsSmsMessage: false, SmsNotification: false, UserRecipients: [], OnBehalfOf: found.userName, SchoolId: found.schoolCode,
+      IsOtherUserAdded: others, IsSpecialMessage: false, HideReceivers: false };
     return this.#prepare('absence', { path: '/Api/message/', body: request },
-      { child: found.name, absence: period, ...(others ? { copyTo } : {}), text: body }, null);
+      { child: found.name, subject: 'Melding om fravær', to: ["Skolemelding sends it to the school's absence recipients"],
+        absence: period, ...(others ? { copyTo } : {}), text: body }, null);
   }
 
-  async sendPrepared({ confirmation_code: code } = {}) {
+  // Marks a received message and its unread replies as read, as opening it in the app does. Skolemelding has no way
+  // to mark it unread again, so it is one direct call the parent asks for, not a prepared send.
+  async markRead({ message_id: id } = {}) {
+    const message = await this.#message(messageId(id));
+    await this.#confirmed('mark_read', await this.#describe(message));
+    const onBehalfOf = encodeURIComponent(message.OnBehalfOf || '');
+    const threads = (Array.isArray(message.Threads) ? message.Threads : []).filter((t) => t?.IsSeen === false && typeof t.ThreadId === 'string');
+    for (const threadId of ['', ...threads.map((t) => t.ThreadId)]) {
+      await this.#mobile.getText(`/api/message/MarkMessageRead?messageId=${message.Id}&threadid=${encodeURIComponent(threadId)}&onBehalfOf=${onBehalfOf}`);
+    }
+    const result = { markedRead: true, ...await this.#describe(message), threads: threads.length };
+    return this.#logged({ action: 'mark_read', ...result }, result);
+  }
+
+  // Asks the parent in the client's dialog when the client can. null means it cannot ask, and the client's own tool
+  // approval is the check; anything but a clear yes stops it.
+  async #confirmed(action, preview) {
+    const lines = Object.entries(preview).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
+    const question = `Skolemelding: ${action}\n${lines.join('\n')}`;
+    const answer = await this.#confirm(question.length > 4_000 ? `${question.slice(0, 3_999)}…` : question);
+    if (answer === false) throw new PublicError('Not sent: it was not confirmed in the dialog. Prepare it again if the parent still wants it.');
+  }
+
+  // A failed log write must not turn a completed action into an error: it was already sent.
+  async #logged(entry, result) {
+    try {
+      await mkdir(dirname(this.#log), { recursive: true, mode: 0o700 });
+      await appendFile(this.#log, JSON.stringify({ time: new Date(this.#now()).toISOString(), ...entry }) + '\n', { mode: 0o600 });
+      return result;
+    } catch {
+      return { ...result, note: [result.note, 'It was sent, but could not be written to the local log.'].filter(Boolean).join(' ') };
+    }
+  }
+
+  async sendPrepared({ confirmation_code: code, summary } = {}) {
     const entry = typeof code === 'string' ? this.#pending.get(code) : undefined;
     if (!entry || entry.expiresAt <= this.#now()) {
       this.#pending.delete(code);
       throw new PublicError('Unknown or expired confirmation code. Prepare the message again.');
     }
+    if (summary !== entry.summary) throw new PublicError('The summary does not match what was prepared. Pass the summary exactly as prepare returned it.');
     this.#pending.delete(code);  // single use, also when sending fails, so nothing is ever sent twice by a retry
+    await this.#confirmed(entry.action, entry.preview);
     const response = await this.#mobile.postJson(entry.request.path, entry.request.body);
     if (response === false) throw new PublicError('Skolemelding did not accept it. Check in the Skolemelding app.');
     let verified = null;
@@ -250,11 +298,8 @@ export class Sender {
       verified = Boolean(after && entry.verify(after));
     }
     const result = { sent: true, action: entry.action, ...entry.preview, ...(verified === null ? {} : { verified }) };
-    await mkdir(dirname(this.#log), { recursive: true, mode: 0o700 });
-    await appendFile(this.#log, JSON.stringify({ time: new Date(this.#now()).toISOString(), ...result }) + '\n', { mode: 0o600 });
-    if (verified === false) {
-      return { ...result, note: 'Skolemelding accepted the request, but the message does not show it yet. Check in the Skolemelding app.' };
-    }
-    return result;
+    const shown = verified === false
+      ? { ...result, note: 'Skolemelding accepted the request, but the message does not show it yet. Check in the Skolemelding app.' } : result;
+    return this.#logged(result, shown);
   }
 }

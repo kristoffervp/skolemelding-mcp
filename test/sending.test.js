@@ -17,13 +17,16 @@ function message(id, extra = {}) {
     Threads: [], FeedbackGiven: null, IsMessageConfirmed: false, ...extra };
 }
 
-// A fake Skolemelding: the web search returns these messages, GET/POST are recorded.
-function fake(messages, { postResult = true, after = {}, childExtra = {}, parents = [{ Name: 'Per Hansen' }] } = {}) {
-  const calls = { get: [], post: [] };
+// A fake Skolemelding: the web search returns these messages, the app search returns app (hidden ones only when asked),
+// GET/POST are recorded, and the favourite and hide toggles flip the app message unless toggles is false.
+function fake(messages, { postResult = true, after = {}, childExtra = {}, parents = [{ Name: 'Per Hansen' }], app = [], toggles = true, withoutHidden = false,
+  postError, extraChildren = [] } = {}) {
+  const calls = { get: [], post: [], search: [] };
+  const flips = { '/api/message/ToggleMessageFavourite': 'IsFavourite', '/api/message/MarkMessageHidden': 'IsHidden' };
   let posted = false;
   const mobile = {
     calls,
-    async getChildren() { return [{ ...child, ...childExtra }]; },
+    async getChildren() { return [{ ...child, ...childExtra }, ...extraChildren]; },
     async webSearchPage(page, pageSize) {
       const list = messages.map((m) => (posted ? { ...m, ...after } : m));
       return { Result: list.slice((page - 1) * pageSize, page * pageSize), TotalMatching: list.length };
@@ -36,8 +39,21 @@ function fake(messages, { postResult = true, after = {}, childExtra = {}, parent
       if (path === '/Api/MyProfile/GetChildsParent') return [{ UserName: 'ada01', LstParentInfo: parents }];
       throw new Error(`not stubbed: ${path}`);
     },
+    async searchPage(page, pageSize, { unread = false, hidden = false } = {}) {
+      calls.search.push({ page, unread, hidden });
+      const list = app.filter((m) => (hidden || m.IsHidden !== true) && (!unread || m.IsMessageSeen === false))
+        .map((m) => (withoutHidden ? { ...m, IsHidden: undefined } : m));
+      return { Result: list.slice((page - 1) * pageSize, page * pageSize), TotalMatching: list.length };
+    },
     async getText(path) { calls.get.push(path); return ''; },
-    async postJson(path, body) { calls.post.push({ path, body }); posted = true; return postResult; },
+    async postJson(path, body) {
+      calls.post.push({ path, body });
+      if (postError) throw postError;
+      posted = true;
+      const flipped = toggles && flips[path] && app.find((m) => m.Id === body.id && m.OnBehalfOf === body.onBehalfOf);
+      if (flipped) flipped[flips[path]] = !flipped[flips[path]];
+      return postResult;
+    },
   };
   return mobile;
 }
@@ -234,7 +250,7 @@ test('the parent confirms in the dialog: a no sends nothing and uses up the code
   await assert.rejects(sender.markRead({ message_id: '60' }), /not confirmed/);
   assert.equal(mobile.calls.post.length, 0);
   assert.equal(mobile.calls.get.some((path) => path.includes('MarkMessageRead')), false);
-  assert.match(questions[0], /^Skolemelding: reply\n.*text: Hei/s);
+  assert.match(questions[0], /^Skolemelding: reply\n.*\n\nText that is sent:\nHei$/s);
 });
 
 test('send_prepared needs the summary exactly as prepared', async (t) => {
@@ -247,4 +263,167 @@ test('send_prepared needs the summary exactly as prepared', async (t) => {
   assert.equal(mobile.calls.post.length, 0);
   await sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary });
   assert.equal(mobile.calls.post.length, 1);
+});
+
+test('set_favourite reads the state first: no call when it already matches, one toggle when it does not, then verifies', async (t) => {
+  const app = [message(80, { IsFavourite: true }), message(81, { IsFavourite: false }), message(82)];
+  const questions = [];
+  const { mobile, sender, dir, log } = await setup([], { app, confirm: async (text) => { questions.push(text); return true; } });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const same = await sender.setFavourite({ message_id: '80', favourite: true });
+  assert.deepEqual([same.changed, same.favourite, mobile.calls.post.length, questions.length], [false, true, 0, 0]);
+  const changed = await sender.setFavourite({ message_id: '081', favourite: true });
+  assert.deepEqual([changed.changed, changed.verified, changed.subject], [true, true, 'Subject 81']);
+  assert.deepEqual(mobile.calls.post, [{ path: '/api/message/ToggleMessageFavourite', body: { id: 81, onBehalfOf: 'ada01' } }]);
+  assert.match(questions[0], /^Skolemelding: set_favourite\n[\s\S]*favourite: true/);
+  assert.match(await readFile(log, 'utf8'), /"action":"set_favourite".*"messageId":"81"/);
+  await assert.rejects(sender.setFavourite({ message_id: '82', favourite: true }), /Could not read whether/, 'unknown state is not toggled');
+  await assert.rejects(sender.setFavourite({ message_id: '80', favourite: 'yes' }), /true or false/);
+  await assert.rejects(sender.setFavourite({ message_id: '8 0', favourite: true }), /Invalid message ID/);
+  assert.equal(mobile.calls.post.length, 1);
+});
+
+test('two set_favourite calls at once toggle only once', async (t) => {
+  const app = [message(83, { IsFavourite: false })];
+  const { mobile, sender, dir } = await setup([], { app });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const results = await Promise.all([sender.setFavourite({ message_id: '83', favourite: true }), sender.setFavourite({ message_id: '83', favourite: true })]);
+  assert.deepEqual(results.map((r) => r.changed), [true, false]);
+  assert.equal(mobile.calls.post.length, 1);
+  assert.equal(app[0].IsFavourite, true);
+});
+
+test('set_hidden finds hidden messages too, toggles only when needed, and refuses when the state is unclear', async (t) => {
+  const app = [message(90), message(91, { IsHidden: true })];
+  const { mobile, sender, dir } = await setup([], { app });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const hidden = await sender.setHidden({ message_id: '90', hidden: true });
+  assert.deepEqual([hidden.changed, hidden.verified], [true, true], 'a message in the plain inbox is not hidden, even without IsHidden');
+  assert.deepEqual(mobile.calls.post.at(-1), { path: '/api/message/MarkMessageHidden', body: { id: 90, onBehalfOf: 'ada01' } });
+  assert.equal((await sender.setHidden({ message_id: '91', hidden: true })).changed, false);
+  const shown = await sender.setHidden({ message_id: '91', hidden: false });
+  assert.deepEqual([shown.changed, shown.hidden, shown.verified], [true, false, true]);
+  assert.equal(mobile.calls.post.length, 2);
+  await assert.rejects(sender.setHidden({ message_id: '404', hidden: true }), /not found/);
+  assert.equal(mobile.calls.post.length, 2);
+  // Only in the search that includes hidden messages, but the response does not say it is hidden.
+  const unclear = await setup([], { app: [message(92, { IsHidden: true })], withoutHidden: true });
+  t.after(() => rm(unclear.dir, { recursive: true, force: true }));
+  await assert.rejects(unclear.sender.setHidden({ message_id: '92', hidden: false }), /Could not read whether this message is hidden/);
+  assert.equal(unclear.mobile.calls.post.length, 0);
+});
+
+test('a toggle the parent declines sends nothing, and one that does not show afterwards says so', async (t) => {
+  const declined = await setup([], { app: [message(93, { IsFavourite: false })], confirm: async () => false });
+  t.after(() => rm(declined.dir, { recursive: true, force: true }));
+  await assert.rejects(declined.sender.setFavourite({ message_id: '93', favourite: true }), /not confirmed/);
+  assert.equal(declined.mobile.calls.post.length, 0);
+  const stuck = await setup([], { app: [message(94, { IsFavourite: false })], toggles: false });
+  t.after(() => rm(stuck.dir, { recursive: true, force: true }));
+  const result = await stuck.sender.setFavourite({ message_id: '94', favourite: true });
+  assert.deepEqual([result.changed, result.verified], [true, false]);
+  assert.match(result.note, /does not show it yet/);
+  const refused = await setup([], { app: [message(95, { IsHidden: false })], postResult: false });
+  t.after(() => rm(refused.dir, { recursive: true, force: true }));
+  await assert.rejects(refused.sender.setHidden({ message_id: '95', hidden: true }), /did not accept/);
+});
+
+test('mark all read is prepared with the unread count for the child, and sent once with send_prepared', async (t) => {
+  const app = [message(100, { IsMessageSeen: false }), message(101, { IsMessageSeen: false }), message(102, { IsMessageSeen: true }),
+    message(103, { IsMessageSeen: false, OnBehalfOf: 'bob02' })];
+  const { mobile, sender, dir } = await setup([], { app });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const prepared = await sender.prepareMarkAllRead();
+  assert.deepEqual([prepared.action, prepared.child, prepared.unreadMessages, prepared.summary],
+    ['mark_all_read', 'Ada Hansen', 2, 'mark_all_read · Ada Hansen · 2 unread messages']);
+  assert.equal(mobile.calls.post.length, 0, 'prepare sends nothing');
+  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: 'mark_all_read · Ada Hansen' }), /summary does not match/);
+  const sent = await sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary });
+  assert.deepEqual([sent.sent, sent.unreadMessages], [true, 2]);
+  assert.deepEqual(mobile.calls.post, [{ path: '/api/Message/sync-unread', body: { OnBehalfOn: 'ada01' } }]);
+  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary }), /Unknown or expired/);
+  const none = await setup([], { app: [message(104, { IsMessageSeen: true })] });
+  t.after(() => rm(none.dir, { recursive: true, force: true }));
+  await assert.rejects(none.sender.prepareMarkAllRead({ child: 'Ada' }), /No unread messages for Ada Hansen/);
+  await assert.rejects(none.sender.prepareMarkAllRead({ child: 'Bob' }), /No child named/);
+});
+
+test('the dialog cannot be faked by line breaks in a subject: one short line per value, the decision first, sent text last', async (t) => {
+  const questions = [];
+  const header = `Info\nhidden: false favourite: true${'\n'.repeat(4000)}end`;
+  const { mobile, sender, dir } = await setup([message(110, { Header: header })], { app: [message(110, { Header: header })],
+    confirm: async (text) => { questions.push(text); return false; } });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await assert.rejects(sender.setHidden({ message_id: '110', hidden: true }), /not confirmed/);
+  const lines = questions[0].split('\n');
+  assert.equal(lines[1], 'hidden: true', 'the deciding field comes first');
+  assert.equal(lines.filter((line) => /^(hidden|favourite):/.test(line)).length, 1, 'no injected field lines');
+  assert.ok(lines.every((line) => line.length <= 220));
+  const reply = await sender.prepareReply({ message_id: '110', text: 'Hei\nanswer: Nei' });
+  assert.equal(reply.summary.includes('\n'), false, 'the summary is one line');
+  await assert.rejects(sender.sendPrepared({ confirmation_code: reply.confirmationCode, summary: reply.summary }), /not confirmed/);
+  assert.match(questions[1], /\n\nText that is sent:\nHei\nanswer: Nei$/, 'the sent text comes last, under its own heading');
+  assert.equal(mobile.calls.post.length, 0);
+});
+
+test('after a toggle that does not show yet, the message is not toggled again for five minutes', async (t) => {
+  const { mobile, sender, dir, later } = await setup([], { app: [message(111, { IsFavourite: false })], toggles: false });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  assert.equal((await sender.setFavourite({ message_id: '111', favourite: true })).verified, false);
+  await assert.rejects(sender.setFavourite({ message_id: '111', favourite: true }), /does not show yet/);
+  await assert.rejects(sender.setFavourite({ message_id: '111', favourite: false }), /does not show yet/);
+  assert.equal(mobile.calls.post.length, 1, 'a retry cannot flip it back');
+  later(5 * 60_000);
+  await sender.setFavourite({ message_id: '111', favourite: true });
+  assert.equal(mobile.calls.post.length, 2);
+});
+
+test('a toggle with no clear answer is logged and blocks a retry', async (t) => {
+  const { PublicError } = await import('../src/errors.js');
+  const { mobile, sender, dir, log } = await setup([], { app: [message(112, { IsHidden: false })],
+    postError: new PublicError('No answer from Skolemelding. It may have been sent: check in the Skolemelding app before you try again.') });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await assert.rejects(sender.setHidden({ message_id: '112', hidden: true }), /may have been sent/);
+  assert.match(await readFile(log, 'utf8'), /"action":"set_hidden","hidden":true.*"failed":true.*may have been sent/);
+  await assert.rejects(sender.setHidden({ message_id: '112', hidden: true }), /does not show yet/);
+  assert.equal(mobile.calls.post.length, 1);
+  const send = await setup([message(113)], { postError: new PublicError('Skolemelding request failed (HTTP 500).') });
+  t.after(() => rm(send.dir, { recursive: true, force: true }));
+  const prepared = await send.sender.prepareReply({ message_id: '113', text: 'Hei' });
+  await assert.rejects(send.sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary }), /HTTP 500/);
+  assert.match(await readFile(send.log, 'utf8'), /"action":"reply".*"failed":true/);
+});
+
+test('a message about two children is toggled only for the chosen child, and verified on that copy', async (t) => {
+  const app = [message(114, { IsHidden: true }), message(114, { OnBehalfOf: 'bob02' })];
+  const { mobile, sender, dir } = await setup([], { app,
+    extraChildren: [{ FirstName: 'Bob', LastName: 'Hansen', SchoolName: 'Nordpolen skole', UserName: 'bob02', SchoolCode: 'NPS' }] });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await assert.rejects(sender.setHidden({ message_id: '114', hidden: false }), /several children \(Bob Hansen, Ada Hansen\).*child/);
+  const shown = await sender.setHidden({ message_id: '114', hidden: false, child: 'Ada' });
+  assert.deepEqual([shown.changed, shown.verified, shown.children], [true, true, ['Ada Hansen']]);
+  assert.deepEqual(mobile.calls.post, [{ path: '/api/message/MarkMessageHidden', body: { id: 114, onBehalfOf: 'ada01' } }]);
+  assert.equal((await sender.setHidden({ message_id: '114', hidden: false, child: 'Bob' })).changed, false);
+  const hidden = await sender.setHidden({ message_id: '114', hidden: true, child: 'Bob' });
+  assert.deepEqual([hidden.verified, app[0].IsHidden, app[1].IsHidden], [true, false, true]);
+});
+
+test('a change made while the dialog is open is not undone', async (t) => {
+  const app = [message(115, { IsHidden: false })];
+  const { mobile, sender, dir } = await setup([], { app, confirm: async () => { app[0].IsHidden = true; return true; } });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const result = await sender.setHidden({ message_id: '115', hidden: true });
+  assert.deepEqual([result.changed, app[0].IsHidden, mobile.calls.post.length], [false, true, 0]);
+  assert.match(result.note, /already changed while waiting/);
+});
+
+test('the mark-all-read dialog says it cannot be undone and shows 100+ at the cap', async (t) => {
+  const questions = [];
+  const app = Array.from({ length: 105 }, (_, i) => message(200 + i, { IsMessageSeen: false }));
+  const { sender, dir } = await setup([], { app, confirm: async (text) => { questions.push(text); return false; } });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const prepared = await sender.prepareMarkAllRead();
+  assert.match(prepared.summary, /100\+ unread messages/);
+  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary }), /not confirmed/);
+  assert.match(questions[0].split('\n')[1], /^effect: Marks all 100\+ unread messages about Ada Hansen as read, and any that arrive before it is sent\. It can't be undone\.$/);
 });

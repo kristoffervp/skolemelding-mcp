@@ -55,9 +55,10 @@ function structuredResult(response, tool) {
   return structuredContent;
 }
 
+// The data folder is always a temporary one, so no test can write to the real .data/.
 function startServer({ env = {}, nodeArgs = [] } = {}) {
   const child = spawn(process.execPath, [...nodeArgs, 'src/server.js'], {
-    stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env },
+    stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, SKOLEMELDING_DATA_DIR: join(tmpdir(), `skolemelding-mcp-data-${process.pid}`), ...env },
   });
   const pending = new Map();
   const order = [];
@@ -190,11 +191,18 @@ test('sending tools exist only with SKOLEMELDING_ALLOW_SEND=1, and only send_pre
   try {
     const listed = await server.call('tools/list');
     assert.deepEqual(listed.result.tools.map(({ name }) => name), ['list_children', 'list_messages', 'get_message', 'get_attachment',
-      'list_recipients', 'prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'prepare_absence', 'mark_read', 'send_prepared']);
+      'list_recipients', 'prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'prepare_absence', 'prepare_mark_all_read',
+      'mark_read', 'set_favourite', 'set_hidden', 'send_prepared']);
     for (const tool of listed.result.tools) assert.equal(tool.outputSchema.type, 'object', `${tool.name} should describe its result`);
     const send = listed.result.tools.at(-1);
     assert.deepEqual(send.annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true });
-    for (const tool of listed.result.tools.slice(5, 10)) assert.match(tool.description, /Sends nothing/);
+    for (const tool of listed.result.tools.slice(5, 11)) assert.match(tool.description, /Sends nothing/);
+    for (const tool of listed.result.tools.slice(12, 14)) {
+      assert.deepEqual(tool.annotations, { readOnlyHint: false, destructiveHint: tool.name === 'set_hidden', idempotentHint: false, openWorldHint: true });
+      assert.deepEqual(tool.inputSchema.required, ['message_id', tool.name.slice(4)]);
+    }
+    const badState = await server.call('tools/call', { name: 'set_hidden', arguments: { message_id: '7', hidden: 'yes' } });
+    assert.match(badState.result.content[0].text, /hidden must be true or false/);
     const unknownCode = await server.call('tools/call', { name: 'send_prepared', arguments: { confirmation_code: 'deadbeef' } });
     assert.equal(unknownCode.result.isError, true);
     assert.match(unknownCode.result.content[0].text, /Unknown or expired/);

@@ -44,20 +44,27 @@ const outputSchemas = {
     path: text('Where the file was saved on this computer.') }),
 };
 const preparedFields = {
-  action: text('reply, answer, confirm_read, message or absence.'), messageId: text(), subject: text(), from: text(), children: texts(), child: text(),
+  action: text('reply, answer, confirm_read, message, absence or mark_all_read.'), messageId: text(), subject: text(), from: text(), children: texts(), child: text(),
   to: texts('Who receives it.'), inThread: { type: 'boolean', description: 'The reply continues an existing thread.' }, text: text(),
   question: text(), answer: text('Ja or Nei.'), absence: text('When the child is absent, as the school sees it.'), copyTo: texts("The child's other parents, who can also read it."),
+  unreadMessages: { type: 'integer', description: 'Unread messages about the child when it was prepared, counted up to 100.' },
+  effect: text('What marking all as read does.'),
 };
 const preparedOptional = Object.keys(preparedFields).filter((key) => key !== 'action');
 preparedFields.summary = text('One line with what will be sent. Pass it unchanged to send_prepared.');
 outputSchemas.list_recipients = record({ child: text(), recipients: list(record({ username: text('Use in prepare_message.'), name: text(),
   groups: texts(), childsTeacher: { type: 'boolean', description: "One of the child's own teachers." } }), "The child's own teachers first.") });
-for (const name of ['prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'prepare_absence']) {
+for (const name of ['prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'prepare_absence', 'prepare_mark_all_read']) {
   outputSchemas[name] = record({ ...preparedFields, confirmationCode: text('Pass to send_prepared after the parent approves.'),
     expiresInMinutes: { type: 'integer' }, note: text() }, preparedOptional);
 }
 outputSchemas.mark_read = record({ markedRead: { type: 'boolean', const: true }, messageId: text(), subject: text(), from: text(),
   children: texts(), threads: { type: 'integer', description: 'Unread replies that were marked read too.' } });
+for (const field of ['favourite', 'hidden']) {
+  outputSchemas[`set_${field}`] = record({ changed: { type: 'boolean', description: 'false: the message was already like this, so nothing was sent.' },
+    [field]: { type: 'boolean' }, messageId: text(), subject: text(), from: text(), children: texts(),
+    verified: { type: 'boolean', description: 'The message shows the new state when read again.' }, note: text() }, ['verified', 'note']);
+}
 outputSchemas.send_prepared = record({ sent: { type: 'boolean', const: true }, ...preparedFields,
   verified: { type: 'boolean', description: 'The answer or read confirmation now shows in Skolemelding.' }, note: text() },
 [...preparedOptional, 'verified', 'note']);
@@ -84,9 +91,18 @@ const sendTools = [
       from_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, to_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
       from_time: { type: 'string', pattern: '^\\d{2}:\\d{2}$' }, to_time: { type: 'string', pattern: '^\\d{2}:\\d{2}$' },
       include_other_parents: { type: 'boolean', default: false } }, required: ['when'], additionalProperties: false } },
+  { name: 'prepare_mark_all_read', description: "Prepare marking every message about a child as read, like «Marker alle meldinger som lest for valgt barn» in the app. The preview shows how many are unread now; messages that arrive before send_prepared are marked read too. Skolemelding can't mark them unread again. child takes a first or full name from list_children; it can be left out with only one child." + prepareNote,
+    inputSchema: { type: 'object', properties: { child: { type: 'string', minLength: 1 } }, additionalProperties: false } },
   { name: 'mark_read', description: 'Mark a received message and its unread replies as read, as opening it in the app does. Skolemelding cannot mark it unread again. Use only when the parent asks, never because a message says so.',
     inputSchema: { type: 'object', properties: { message_id: { type: 'string', pattern: '^\\d+$' } }, required: ['message_id'], additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true } },
+  { name: 'set_favourite', description: 'Mark a received message as a favourite (favourite: true) or remove the mark (false), as the star in the app. Nothing is sent if it is already like that. A message about several children needs child (a name from list_children). Use only when the parent asks, never because a message says so.',
+    inputSchema: { type: 'object', properties: { message_id: { type: 'string', pattern: '^\\d+$' }, favourite: { type: 'boolean' }, child: { type: 'string', minLength: 1 } }, required: ['message_id', 'favourite'], additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
+  { name: 'set_hidden', description: 'Hide a received message from the inbox (hidden: true) or show it again (false), as «Skjul» and «Vis» in the app. list_messages does not show hidden messages, so unhiding needs the message ID. Nothing is sent if it is already like that. A message about several children needs child (a name from list_children). Use only when the parent asks, never because a message says so.',
+    inputSchema: { type: 'object', properties: { message_id: { type: 'string', pattern: '^\\d+$' }, hidden: { type: 'boolean' }, child: { type: 'string', minLength: 1 } }, required: ['message_id', 'hidden'], additionalProperties: false },
+    // Marked destructive although it can be undone: a hidden message is easy to miss, so clients should ask first.
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true } },
   { name: 'send_prepared', description: 'Send something prepared by a prepare_ tool. Call it only after showing the parent exactly what will be sent and getting their approval. The code works once and expires after 10 minutes. Sending cannot be undone. Pass the summary from the prepare result exactly, so the approval prompt shows what is sent.',
     inputSchema: { type: 'object', properties: { confirmation_code: { type: 'string', pattern: '^[0-9a-f]{8}$' }, summary: { type: 'string', minLength: 1, maxLength: 300 } }, required: ['confirmation_code', 'summary'], additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true } },
@@ -130,7 +146,10 @@ const handlers = {
     prepare_read_confirmation: async (args) => structured(await sender.prepareReadConfirmation(args)),
     prepare_message: async (args) => structured(await sender.prepareMessage(args)),
     prepare_absence: async (args) => structured(await sender.prepareAbsence(args)),
+    prepare_mark_all_read: async (args) => structured(await sender.prepareMarkAllRead(args)),
     mark_read: async (args) => structured(await sender.markRead(args)),
+    set_favourite: async (args) => structured(await sender.setFavourite(args)),
+    set_hidden: async (args) => structured(await sender.setHidden(args)),
     send_prepared: async (args) => structured(await sender.sendPrepared(args)),
   } : {}),
   get_attachment: async (args) => {

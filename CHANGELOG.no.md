@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.md)
 
+## 0.10.0 (2026-11-25)
+
+Nytt med `SKOLEMELDING_ALLOW_SEND=1`:
+- `prepare_mark_all_read`: merker alle meldinger om et barn som lest, som «Marker alle meldinger som lest for valgt barn» i appen. Det tar to steg, med `send_prepared`, fordi det ikke kan angres. Forhåndsvisningen viser hvor mange meldinger som er uleste.
+- `set_favourite` og `set_hidden`: merk en melding som favoritt eller skjul den, eller angre det. Du oppgir tilstanden du vil ha. Skolemelding har bare av/på-brytere, så serveren leser meldingen først, og igjen etter at du har bekreftet, endrer ingenting når den allerede er slik du ba om, og leser den igjen etterpå (`verified`). En endring som ikke vises ennå, stopper nye endringer av den meldingen i 5 minutter. En melding om flere barn trenger `child`.
+- Bekreftelsesdialogen viser hver verdi på én kort linje, det avgjørende feltet først og teksten som sendes sist, så et emne med linjeskift ikke kan forfalske en linje. En sending som feiler, logges også.
+- Vedlegg er ikke lagt til: i appen og nettportalen kan bare ansatte legge ved filer.
+
 ## 0.9.0 (2026-11-25)
 
 - `prepare_absence` sender emnet «Melding om fravær» og de tomme feltene appen sender, og avviser når ingen lærer er koblet til barnet på skolen, slik appen gjør: meldingen ville ikke nådd noen.

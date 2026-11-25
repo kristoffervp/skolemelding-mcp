@@ -65,18 +65,22 @@ Sett `SKOLEMELDING_ALLOW_SEND=1` (i `"env"` i klientoppsettet) for å få disse 
 | `prepare_read_confirmation` | Gjør klart en bekreftelse på at du har lest en melding |
 | `prepare_message` | Gjør klart en ny melding til høyst 5 ansatte fra `list_recipients` |
 | `prepare_absence` | Gjør klart en melding om fravær: `today`, `tomorrow`, eller datoer (`ÅÅÅÅ-MM-DD`) med eventuelle klokkeslett (`TT:MM`) |
+| `prepare_mark_all_read` | Gjør klart å merke alle meldinger om et barn som lest, som «Marker alle meldinger som lest» i appen. Forhåndsvisningen viser hvor mange som er uleste. De kan ikke merkes som ulest igjen |
 | `send_prepared` | Sender det et prepare-verktøy har gjort klart |
 | `mark_read` | Merker en melding og ulest svar på den som lest, i ett steg. Den kan ikke merkes som ulest igjen |
+| `set_favourite` | Merker en melding som favoritt (`favourite: true`) eller fjerner merket (`false`) |
+| `set_hidden` | Skjuler en melding i innboksen (`hidden: true`) eller viser den igjen (`false`). Skjulte meldinger listes ikke, så du trenger ID-en for å vise en igjen |
 
 All sending skjer i to steg. Et prepare-verktøy sjekker forespørselen og viser nøyaktig hva som vil bli sendt, med en engangskode. Da er ingenting sendt ennå. `send_prepared` sender det én gang, og koden går ut etter 10 minutter. `send_prepared` må også gjenta én-linjes `summary` fra prepare-steget, så godkjenningsspørsmålet i klienten viser hva som sendes. Alt som sendes, logges i `.data/sent.jsonl`.
 
 Serveren kan ikke vite at du har godkjent, så:
-- Støtter klienten MCP-elicitation (Claude Code gjør det), spør serveren deg selv før `send_prepared` og `mark_read` går gjennom. KI-en kan ikke svare på det for deg.
-- Ellers er klientens eget godkjenningsspørsmål den eneste kontrollen. Velg aldri «Tillat alltid» for `send_prepared` eller `mark_read`.
+- Støtter klienten MCP-elicitation (Claude Code gjør det), spør serveren deg selv før `send_prepared`, `mark_read`, `set_favourite` og `set_hidden` går gjennom. KI-en kan ikke svare på det for deg.
+- Ellers er klientens eget godkjenningsspørsmål den eneste kontrollen. Velg aldri «Tillat alltid» for `send_prepared`, `mark_read`, `set_favourite` eller `set_hidden`.
 - Kodene hører til serveren som kjører, så en kode fra én samtale virker i en annen samtale i samme klient i 10 minutter.
 
 - `include_other_parents` sender en kopi til barnets andre foresatte, som «Kopi til» i appen. For svar tillater Skolemelding det bare når svaret starter en ny tråd.
-- Bare tekst. Vedlegg og bilder støttes ikke.
+- Bare tekst. I appen og nettportalen kan bare ansatte legge ved filer og bilder, så serveren gjør det heller ikke.
+- Favoritt og skjul er av/på-brytere i Skolemelding. `set_favourite` og `set_hidden` leser meldingen først, og igjen etter at du har bekreftet, og endrer ingenting når den allerede er slik du ba om. Vises ikke endringen etterpå, lar de meldingen være i 5 minutter, så et nytt forsøk ikke kan angre den. En melding om flere barn trenger `child`.
 - Etter et ja/nei-svar eller en lesebekreftelse leser serveren meldingen på nytt og melder `verified`.
 - En melding kan inneholde tekst som skal få KI-klienten til å sende noe. Les forhåndsvisningen, og la sending være av når du ikke trenger den.
 

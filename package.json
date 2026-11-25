@@ -1,8 +1,11 @@
 {
   "name": "skolemelding-mcp",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "license": "0BSD",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "description": "Unofficial local MCP server for Skoleplattform Oslo messages",
   "bin": {

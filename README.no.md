@@ -132,6 +132,7 @@ Settes i klientoppsettet (og i Terminal for `npm run login`):
 
 - Serveren kjører på din datamaskin og åpner ingen nettverksport. En KI-klient du kobler til, kan likevel lese skolemeldingene dine, og en KI-tjeneste i skyen får det klienten leser. Vurder selv hva du vil dele.
 - Meldingstekst sendes videre som informasjon, ikke instruksjoner. Usynlige tegn og skjult HTML fjernes, men det kan ikke stoppe alle forsøk på å styre KI-en. Bruk klienter du stoler på, og se over verktøykallene.
+- Feilmeldinger klienten får, er skrevet av serveren selv og gjentar aldri svar fra Skolemelding eller innholdet i lokale filer.
 - `.data/` inneholder innloggingen din. Del den aldri. Vedlegg ligger der til du sletter dem, og stiene klienten får, inneholder brukernavnet ditt.
 - Innloggingen registrerer denne datamaskinen som en enhet på kontoen din, slik appen gjør. Den sender operativsystem og versjon, appversjon og en tilfeldig enhets-ID. Nettleserprofilen som brukes til innloggingen, slettes etterpå.
 - Se [SECURITY.md](SECURITY.md) for å melde fra om sikkerhetshull.

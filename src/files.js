@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { chmod, rename, unlink, writeFile } from 'node:fs/promises';
+import { PublicError } from './errors.js';
 
 // Marks a file as downloaded from the internet, so macOS Gatekeeper and Windows warn before opening it.
 async function markDownloaded(path) {
@@ -25,4 +26,20 @@ export async function writePrivateFile(path, data, { downloaded = false } = {}) 
     await unlink(temporaryPath).catch(() => {});
     throw error;
   }
+}
+
+// Reads a response body up to maxBytes, so an oversized reply cannot fill the memory of a small computer.
+export async function readLimited(response, maxBytes, message) {
+  if (Number(response.headers.get('content-length')) > maxBytes) throw new PublicError(message);
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of response.body || []) {
+    size += chunk.byteLength;
+    if (size > maxBytes) {
+      await response.body.cancel().catch(() => {});
+      throw new PublicError(message);
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, size);
 }

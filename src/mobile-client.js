@@ -1,4 +1,15 @@
+import { PublicError } from './errors.js';
+import { readLimited } from './files.js';
 import { outdatedHint, portalOrigin as origin, readMobileAuth, refreshMobileAuth } from './mobile-auth.js';
+
+const maxJsonBytes = 2_000_000;
+
+// The parse error would quote the start of the response, so it is replaced.
+async function readJson(response) {
+  const text = (await readLimited(response, maxJsonBytes, 'Skolemelding sent a response that is too large.')).toString('utf8');
+  try { return text ? JSON.parse(text) : null; }
+  catch { throw new PublicError('Skolemelding sent an unexpected response.'); }
+}
 
 export class MobileClient {
   #auth;
@@ -8,7 +19,7 @@ export class MobileClient {
     if (this.#auth) return;
     try { this.#auth = await readMobileAuth(); }
     catch (error) {
-      if (error.code === 'ENOENT') throw new Error('Not signed in to Skolemelding. Run npm run login first.');
+      if (error.code === 'ENOENT') throw new PublicError('Not signed in to Skolemelding. Run npm run login first.');
       throw error;
     }
   }
@@ -18,7 +29,7 @@ export class MobileClient {
       this.#refreshing = refreshMobileAuth(this.#auth).then((auth) => { this.#auth = auth; })
         .catch((error) => {
           if ([400, 401, 403].includes(error.httpStatus)) {
-            throw new Error(`Skolemelding sign-in has expired or was rejected. Run npm run login again. ${outdatedHint}`);
+            throw new PublicError(`Skolemelding sign-in has expired or was rejected. Run npm run login again. ${outdatedHint}`);
           }
           throw error;
         })
@@ -37,7 +48,7 @@ export class MobileClient {
           headers: { ...options.headers, Authorization: `Bearer ${this.#auth.accessToken}` },
           redirect: 'manual', signal: AbortSignal.timeout(30_000),
         });
-      } catch { throw new Error('Could not connect to Skolemelding. Check network access and retry.'); }
+      } catch { throw new PublicError('Could not connect to Skolemelding. Check network access and retry.'); }
     };
     const sentWith = this.#auth.accessToken;
     let response = await send();
@@ -47,7 +58,7 @@ export class MobileClient {
       response = await send();
     }
     if (!response.ok) {
-      const error = new Error(`Skolemelding request failed (HTTP ${response.status}).`);
+      const error = new PublicError(`Skolemelding request failed (HTTP ${response.status}).`);
       error.httpStatus = response.status;
       throw error;
     }
@@ -65,13 +76,13 @@ export class MobileClient {
         SendHiddenMessages: false,
       }),
     });
-    const payload = await response.json();
-    if (!Array.isArray(payload.Result)) throw new Error('Unexpected mobile message response format.');
+    const payload = await readJson(response);
+    if (!Array.isArray(payload?.Result)) throw new PublicError('Unexpected mobile message response format.');
     return payload;
   }
 
   async getJson(path) {
-    return (await this.#request(path, { method: 'GET', headers: { Accept: 'application/json' } })).json();
+    return readJson(await this.#request(path, { method: 'GET', headers: { Accept: 'application/json' } }));
   }
 
   // Used only by sending (src/sending.js). The response may be empty or plain JSON true/false.
@@ -79,7 +90,7 @@ export class MobileClient {
     const response = await this.#request(path, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body),
     });
-    const text = await response.text();
+    const text = (await readLimited(response, maxJsonBytes, 'Skolemelding sent a response that is too large.')).toString('utf8');
     try { return text ? JSON.parse(text) : null; } catch { return text; }
   }
 
@@ -91,13 +102,13 @@ export class MobileClient {
       SearchSent: sent, FilterFavouriteMessages: false, FilterUnreadMessages: false, FilterFeedbackRequired: false,
       FilterFeedbackIsQuestion: false, FilterIsAbsentMessage: false, ShowAbsentMessages: false,
     });
-    if (!Array.isArray(payload?.Result)) throw new Error('Unexpected web message response format.');
+    if (!Array.isArray(payload?.Result)) throw new PublicError('Unexpected web message response format.');
     return payload;
   }
 
   async getChildren() {
     const response = await this.#request('/api/MyProfile/GetChildInfo', { method: 'GET', headers: { Accept: 'application/json' } });
-    const payload = await response.json();
+    const payload = await readJson(response);
     return Array.isArray(payload?.ParentChildOptions) ? payload.ParentChildOptions : [];
   }
 
@@ -106,25 +117,13 @@ export class MobileClient {
     try { response = await this.#request(url, { method: 'GET' }); }
     catch (error) {
       if ([403, 404, 410].includes(error.httpStatus)) {
-        throw new Error(`Skolemelding refused this attachment (HTTP ${error.httpStatus}). It may have been removed.`);
+        throw new PublicError(`Skolemelding refused this attachment (HTTP ${error.httpStatus}). It may have been removed.`);
       }
       throw error;
     }
     const mimeType = response.headers.get('content-type')?.split(';')[0] || 'application/octet-stream';
-    if (mimeType === 'text/html') throw new Error('Attachment request returned a sign-in page.');
-    const declaredSize = Number(response.headers.get('content-length'));
-    if (declaredSize > 10_000_000) throw new Error('Attachment exceeds the 10 MB response limit.');
-    const chunks = [];
-    let size = 0;
-    for await (const chunk of response.body || []) {
-      size += chunk.byteLength;
-      if (size > 10_000_000) {
-        await response.body.cancel().catch(() => {});
-        throw new Error('Attachment exceeds the 10 MB response limit.');
-      }
-      chunks.push(chunk);
-    }
-    const bytes = Buffer.concat(chunks, size);
+    if (mimeType === 'text/html') throw new PublicError('Attachment request returned a sign-in page.');
+    const bytes = await readLimited(response, 10_000_000, 'Attachment exceeds the 10 MB response limit.');
     return { bytes, mimeType };
   }
 }

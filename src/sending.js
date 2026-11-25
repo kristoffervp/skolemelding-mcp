@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { sentLogPath } from './browser.js';
+import { PublicError } from './errors.js';
 import { clean, plainText } from './portal.js';
 
 // Sending is off unless SKOLEMELDING_ALLOW_SEND=1. Everything is sent in two steps: a prepare tool checks the
@@ -17,14 +18,14 @@ const pageSize = 15;
 const maxPages = 20;
 
 function text(value, name, max) {
-  if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} must be non-empty text.`);
+  if (typeof value !== 'string' || !value.trim()) throw new PublicError(`${name} must be non-empty text.`);
   const cleaned = clean(value).replace(/\r\n?/g, '\n').trim();
-  if (cleaned.length > max) throw new Error(`${name} can be at most ${max} characters.`);
+  if (cleaned.length > max) throw new PublicError(`${name} can be at most ${max} characters.`);
   return cleaned;
 }
 
 function messageId(id) {
-  if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new Error('Invalid message ID.');
+  if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new PublicError('Invalid message ID.');
   return id.replace(/^0+(?=\d)/, '');
 }
 
@@ -38,35 +39,35 @@ function norwegian(iso) {
 }
 function isoDate(value, name) {
   const date = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00Z`) : null;
-  if (!date || date.toISOString().slice(0, 10) !== value) throw new Error(`${name} must be a date like 2026-11-30.`);
+  if (!date || date.toISOString().slice(0, 10) !== value) throw new PublicError(`${name} must be a date like 2026-11-30.`);
   return value;
 }
 function time(value, name) {
-  if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error(`${name} must be a time like 08:00.`);
+  if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new PublicError(`${name} must be a time like 08:00.`);
   return value;
 }
 
 // The text the web portal's "Melding om fravær" form sends: today/tomorrow as whole days, or dates with optional times.
 export function absenceTime({ when, from_date: fromDate, to_date: toDate, from_time: fromTime, to_time: toTime }, now) {
   if (when === 'today' || when === 'tomorrow') {
-    if ([fromDate, toDate, fromTime, toTime].some((v) => v !== undefined)) throw new Error(`Dates and times are only used with when: "dates".`);
+    if ([fromDate, toDate, fromTime, toTime].some((v) => v !== undefined)) throw new PublicError(`Dates and times are only used with when: "dates".`);
     const today = osloDate(now);
     // Tomorrow from the calendar day, not now + 24 h, which lands on the same day just after midnight when the clocks go back.
     const day = when === 'tomorrow' ? new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : today;
     return `${norwegian(day)} (Hel dag)`;
   }
-  if (when !== 'dates') throw new Error('when must be "today", "tomorrow" or "dates".');
+  if (when !== 'dates') throw new PublicError('when must be "today", "tomorrow" or "dates".');
   const from = isoDate(fromDate, 'from_date');
   const to = toDate === undefined ? from : isoDate(toDate, 'to_date');
-  if ((fromTime === undefined) !== (toTime === undefined)) throw new Error('Give both from_time and to_time, or neither.');
+  if ((fromTime === undefined) !== (toTime === undefined)) throw new PublicError('Give both from_time and to_time, or neither.');
   const earliest = osloDate(new Date(now).setMonth(new Date(now).getMonth() - 1));
-  if (from < earliest) throw new Error(`The absence can start at most a month back (${norwegian(earliest)}).`);
+  if (from < earliest) throw new PublicError(`The absence can start at most a month back (${norwegian(earliest)}).`);
   if (fromTime === undefined) {
-    if (to < from) throw new Error('to_date cannot be before from_date.');
+    if (to < from) throw new PublicError('to_date cannot be before from_date.');
     return `${norwegian(from)} til ${norwegian(to)}`;
   }
   const [start, end] = [time(fromTime, 'from_time'), time(toTime, 'to_time')];
-  if (`${to}T${end}` < `${from}T${start}`) throw new Error('The absence cannot end before it starts.');
+  if (`${to}T${end}` < `${from}T${start}`) throw new PublicError('The absence cannot end before it starts.');
   return from === to ? `${norwegian(from)} kl. ${start} til ${end}` : `${norwegian(from)} kl. ${start} til ${norwegian(to)} kl. ${end}`;
 }
 
@@ -98,7 +99,7 @@ export class Sender {
       if (found) return found;
       if (page * pageSize >= Number(TotalMatching) || Result.length < pageSize) break;
     }
-    throw new Error('Message not found among the newest messages.');
+    throw new PublicError('Message not found among the newest messages.');
   }
 
   // Names of the child's other guardians, who can read the thread or message when include_other_parents is set.
@@ -116,7 +117,7 @@ export class Sender {
   #prepare(action, request, preview, verify) {
     const now = this.#now();
     for (const [code, entry] of this.#pending) if (entry.expiresAt <= now) this.#pending.delete(code);
-    if (this.#pending.size >= maxPending) throw new Error('Too many prepared messages waiting. Send or let them expire first.');
+    if (this.#pending.size >= maxPending) throw new PublicError('Too many prepared messages waiting. Send or let them expire first.');
     const code = randomBytes(4).toString('hex');
     this.#pending.set(code, { action, request, preview, verify, expiresAt: now + codeTtl });
     return { action, ...preview, confirmationCode: code, expiresInMinutes: codeTtl / 60_000,
@@ -141,31 +142,31 @@ export class Sender {
 
   async prepareReply({ message_id: id, text: body, thread_id: threadId, include_other_parents: others = false } = {}) {
     const reply = text(body, 'Text', maxText);
-    if (threadId !== undefined && typeof threadId !== 'string') throw new Error('thread_id must be text.');
-    if (typeof others !== 'boolean') throw new Error('include_other_parents must be true or false.');
+    if (threadId !== undefined && typeof threadId !== 'string') throw new PublicError('thread_id must be text.');
+    if (typeof others !== 'boolean') throw new PublicError('include_other_parents must be true or false.');
     const message = await this.#message(messageId(id));
-    if (message.IsReplyAllowed === false) throw new Error('The school has turned off replies to this message.');
+    if (message.IsReplyAllowed === false) throw new PublicError('The school has turned off replies to this message.');
     const threads = Array.isArray(message.Threads) ? message.Threads : [];
     let thread;
     if (threadId !== undefined) {
       thread = threads.find((t) => t.ThreadId === threadId);
-      if (!thread) throw new Error('No thread with that ID on this message.');
+      if (!thread) throw new PublicError('No thread with that ID on this message.');
     } else if (threads.length > 1) {
-      throw new Error(`This message has several threads. Choose one with thread_id: ${threads.map((t) => `${t.ThreadId} (${clean(t.DisplayText)})`).join(', ')}.`);
+      throw new PublicError(`This message has several threads. Choose one with thread_id: ${threads.map((t) => `${t.ThreadId} (${clean(t.DisplayText)})`).join(', ')}.`);
     } else thread = threads[0];
     let recipientId = message.Author;
     if (thread) {
       const loaded = await this.#mobile.getJson(`/Api/Message/GetMessageWithId?messageId=${message.Id}&threadId=${encodeURIComponent(thread.ThreadId)}&onBehalfOf=${encodeURIComponent(message.OnBehalfOf || '')}&isPortal=true`);
       recipientId = (Array.isArray(loaded) ? loaded : []).find((t) => t.ThreadId === thread.ThreadId)?.RecipientId;
     }
-    if (!recipientId) throw new Error('Could not find who to reply to. Reply in the Skolemelding app instead.');
+    if (!recipientId) throw new PublicError('Could not find who to reply to. Reply in the Skolemelding app instead.');
     // As in the web portal: the other guardians can only be added when a reply starts a new thread.
     let copyTo = [];
     if (others) {
-      if (thread) throw new Error('The other parents can only be added when the reply starts a new thread; this message already has one.');
-      if (message.CanAddOtherParents !== true) throw new Error('The school does not allow adding the other parents to replies to this message.');
+      if (thread) throw new PublicError('The other parents can only be added when the reply starts a new thread; this message already has one.');
+      if (message.CanAddOtherParents !== true) throw new PublicError('The school does not allow adding the other parents to replies to this message.');
       copyTo = await this.#otherParents(message.OnBehalfOf);
-      if (!copyTo.length) throw new Error('No other parent is registered for this child.');
+      if (!copyTo.length) throw new PublicError('No other parent is registered for this child.');
     }
     const request = { MessageId: message.Id, MessageText: reply, OnBehalfOf: message.OnBehalfOf || '', RecipientId: recipientId,
       ThreadId: thread?.ThreadId || '', AddOtherParentInThread: others, AddOtherTeacherInThread: false, TeacherRecipients: [] };
@@ -176,10 +177,10 @@ export class Sender {
 
   async prepareAnswer({ message_id: id, answer } = {}) {
     const given = { ja: 'Ja', nei: 'Nei', yes: 'Ja', no: 'Nei' }[String(answer).trim().toLowerCase()];
-    if (!given) throw new Error('Answer must be "ja" or "nei".');
+    if (!given) throw new PublicError('Answer must be "ja" or "nei".');
     const message = await this.#message(messageId(id));
-    if (!message.IsFeedBackQuestion) throw new Error('This message has no yes/no question.');
-    if (message.FeedbackGiven) throw new Error(`The question is already answered (${clean(message.FeedbackGiven)}).`);
+    if (!message.IsFeedBackQuestion) throw new PublicError('This message has no yes/no question.');
+    if (message.FeedbackGiven) throw new PublicError(`The question is already answered (${clean(message.FeedbackGiven)}).`);
     const body = { FeedbackGiven: given, Id: message.Id, MessageConfirmed: true, OnBehalfOf: message.OnBehalfOf || '' };
     return this.#prepare('answer', { path: '/Api/message/ConfirmFeedbackWithPossibleQuestion', body },
       { ...await this.#describe(message), question: plainText(message.QuestionText), answer: given },
@@ -188,8 +189,8 @@ export class Sender {
 
   async prepareReadConfirmation({ message_id: id } = {}) {
     const message = await this.#message(messageId(id));
-    if (!message.IsFeedBackReadConfirmation) throw new Error('The school has not asked for a read confirmation on this message.');
-    if (message.IsMessageConfirmed) throw new Error('This message is already confirmed as read.');
+    if (!message.IsFeedBackReadConfirmation) throw new PublicError('The school has not asked for a read confirmation on this message.');
+    if (message.IsMessageConfirmed) throw new PublicError('This message is already confirmed as read.');
     const body = { FeedbackGiven: '', Id: message.Id, MessageConfirmed: true, OnBehalfOf: message.OnBehalfOf || '' };
     return this.#prepare('confirm_read', { path: '/Api/message/ConfirmFeedbackWithPossibleQuestion', body },
       await this.#describe(message), (after) => after.IsMessageConfirmed === true);
@@ -197,18 +198,18 @@ export class Sender {
 
   async prepareMessage({ child, recipients, subject, text: body, include_other_parents: others = false } = {}) {
     if (!Array.isArray(recipients) || recipients.length === 0 || !recipients.every((r) => typeof r === 'string' && r)) {
-      throw new Error('Recipients must be a list of usernames from list_recipients.');
+      throw new PublicError('Recipients must be a list of usernames from list_recipients.');
     }
-    if (typeof others !== 'boolean') throw new Error('include_other_parents must be true or false.');
+    if (typeof others !== 'boolean') throw new PublicError('include_other_parents must be true or false.');
     const header = text(subject, 'Subject', maxSubject);
     const message = text(body, 'Text', maxText);
     const found = await this.#portal.childFor(child);
     const [staff, settings] = await Promise.all([this.#staff(found), this.#mobile.getJson('/Api/Settings')]);
     const max = Number(settings?.MaxRecipientsForParents) || 5;
     const unique = [...new Set(recipients)];
-    if (unique.length > max) throw new Error(`Skolemelding allows at most ${max} recipients per message.`);
+    if (unique.length > max) throw new PublicError(`Skolemelding allows at most ${max} recipients per message.`);
     const unknown = unique.filter((username) => !staff.some((user) => user.Username === username));
-    if (unknown.length) throw new Error(`Not a recipient you can write to: ${unknown.join(', ')}. Use usernames from list_recipients.`);
+    if (unknown.length) throw new PublicError(`Not a recipient you can write to: ${unknown.join(', ')}. Use usernames from list_recipients.`);
     const users = unique.map((username) => staff.find((user) => user.Username === username));
     const request = { Attachments: [], Body: html(message), ExistingFileIds: [], GroupRecipients: [], Header: header, IsCreatedOnWeb: true,
       IsReplyAllowed: true, IsSmsMessage: false, Scheduling: null, SmsNotification: false, UserRecipients: users, OnBehalfOf: found.userName,
@@ -221,11 +222,11 @@ export class Sender {
   }
 
   async prepareAbsence({ child, include_other_parents: others = false, ...when } = {}) {
-    if (typeof others !== 'boolean') throw new Error('include_other_parents must be true or false.');
+    if (typeof others !== 'boolean') throw new PublicError('include_other_parents must be true or false.');
     const period = absenceTime(when, this.#now());
     const found = await this.#portal.childFor(child);
     const copyTo = others ? await this.#otherParents(found.userName) : [];
-    if (others && !copyTo.length) throw new Error('No other parent is registered for this child.');
+    if (others && !copyTo.length) throw new PublicError('No other parent is registered for this child.');
     // Same text and fields as the portal's form; the school receives it as an absence report.
     const body = `Elev: ${found.name} \n Tidspunkt for fravær: ${period}`;
     const request = { Body: body, IsAbsenceReport: true, IsCreatedOnWeb: true, IsReplyAllowed: true, OnBehalfOf: found.userName,
@@ -238,11 +239,11 @@ export class Sender {
     const entry = typeof code === 'string' ? this.#pending.get(code) : undefined;
     if (!entry || entry.expiresAt <= this.#now()) {
       this.#pending.delete(code);
-      throw new Error('Unknown or expired confirmation code. Prepare the message again.');
+      throw new PublicError('Unknown or expired confirmation code. Prepare the message again.');
     }
     this.#pending.delete(code);  // single use, also when sending fails, so nothing is ever sent twice by a retry
     const response = await this.#mobile.postJson(entry.request.path, entry.request.body);
-    if (response === false) throw new Error('Skolemelding did not accept it. Check in the Skolemelding app.');
+    if (response === false) throw new PublicError('Skolemelding did not accept it. Check in the Skolemelding app.');
     let verified = null;
     if (entry.verify) {
       const after = await this.#message(String(entry.request.body.Id)).catch(() => null);

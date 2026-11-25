@@ -212,3 +212,16 @@ test('local file errors do not reveal paths', async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('read tools are marked read-only, and an oversized request line is refused without stopping the server', async () => {
+  const server = startServer({
+    env: { SKOLEMELDING_MOBILE_AUTH_FILE: join(tmpdir(), `skolemelding-mcp-missing-${process.pid}.json`), SKOLEMELDING_ALLOW_SEND: '' },
+  });
+  try {
+    const { result } = await server.call('tools/list');
+    assert.ok(result.tools.every((tool) => tool.annotations.readOnlyHint === true && tool.annotations.destructiveHint === false));
+    const refused = server.send({ jsonrpc: '2.0', id: 99, method: 'ping', params: { padding: 'x'.repeat(70_000) } });
+    assert.equal((await refused).error.message, 'Request too large');
+    assert.deepEqual((await server.call('ping')).result, {});
+  } finally { await server.stop(); }
+});

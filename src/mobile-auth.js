@@ -4,7 +4,8 @@ import { release } from 'node:os';
 import { dirname } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { browserChannel, loadPlaywright, mobileAuthFilePath } from './browser.js';
-import { writePrivateFile } from './files.js';
+import { PublicError } from './errors.js';
+import { readLimited, writePrivateFile } from './files.js';
 
 export const portalOrigin = 'https://portal.skoleplattform.no';
 // Values used by the official Skolemelding Foresatte app. Override them if an app update makes the portal reject these.
@@ -21,14 +22,15 @@ async function jsonRequest(url, options) {
   let response;
   // Redirects are refused so that tokens and codes in the request body are never re-sent to another address.
   try { response = await fetch(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(30_000) }); }
-  catch { throw new Error('Could not reach the sign-in service. Check the network and retry.'); }
+  catch { throw new PublicError('Could not reach the sign-in service. Check the network and retry.'); }
   if (!response.ok) {
-    const error = new Error(`Sign-in service returned HTTP ${response.status}.`);
+    const error = new PublicError(`Sign-in service returned HTTP ${response.status}.`);
     error.httpStatus = response.status;
     throw error;
   }
-  try { return await response.json(); }
-  catch { throw new Error('Sign-in service returned an unexpected response.'); }
+  const body = await readLimited(response, 100_000, 'Sign-in service returned a response that is too large.');
+  try { return JSON.parse(body.toString('utf8')); }
+  catch { throw new PublicError('Sign-in service returned an unexpected response.'); }
 }
 
 async function formPost(url, values) {
@@ -49,9 +51,9 @@ export async function readMobileAuth() {
   let auth;
   // The parse error would quote the start of the file, so it is replaced with a message that reveals nothing.
   try { auth = JSON.parse(text); }
-  catch { throw new Error('Saved Skolemelding sign-in is unreadable. Run npm run login again.'); }
+  catch { throw new PublicError('Saved Skolemelding sign-in is unreadable. Run npm run login again.'); }
   if (!auth || !auth.accessToken || !auth.refreshToken || !auth.userName) {
-    throw new Error('Saved mobile sign-in is incomplete. Run npm run login again.');
+    throw new PublicError('Saved mobile sign-in is incomplete. Run npm run login again.');
   }
   return auth;
 }
@@ -64,7 +66,9 @@ async function removeLock(lockPath, owner) {
 async function removeStaleLock(lockPath) {
   try {
     const owner = await readFile(lockPath, 'utf8');
-    if (Date.now() - (await stat(lockPath)).mtimeMs > 90_000) await removeLock(lockPath, owner);
+    // Older than one sign-in request may take (30 s), and shorter than the 45 s a waiting process waits, so a lock
+    // left by a crashed process is cleared by the next caller instead of failing every call as busy.
+    if (Date.now() - (await stat(lockPath)).mtimeMs > 40_000) await removeLock(lockPath, owner);
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
@@ -88,7 +92,7 @@ async function withAuthLock(action) {
       await delay(100);
     }
   }
-  if (!locked) throw new Error('Skolemelding sign-in file is busy. Retry shortly.');
+  if (!locked) throw new PublicError('Skolemelding sign-in file is busy. Retry shortly.');
   try { return await action(); }
   finally { await removeLock(lockPath, owner); }
 }
@@ -109,7 +113,7 @@ export async function refreshMobileAuth(auth, { preferProvided = false } = {}) {
       grant_type: 'refresh_token', refresh_token: current.refreshToken,
       client_id: tokenClientId, app_version: appVersion, username: current.userName,
     });
-    if (!response.access_token) throw new Error('Skolemelding did not return a new access token. Run npm run login again.');
+    if (!response.access_token) throw new PublicError('Skolemelding did not return a new access token. Run npm run login again.');
     const updated = {
       ...current,
       accessToken: response.access_token,
@@ -124,7 +128,7 @@ export async function refreshMobileAuth(auth, { preferProvided = false } = {}) {
 
 export async function loginMobile() {
   const metadata = await jsonRequest('https://idporten.no/.well-known/openid-configuration');
-  if (metadata.issuer !== 'https://idporten.no') throw new Error('Unexpected ID-porten issuer.');
+  if (metadata.issuer !== 'https://idporten.no') throw new PublicError('Unexpected ID-porten issuer.');
   const verifier = randomBytes(32).toString('base64url');
   const challenge = createHash('sha256').update(verifier).digest('base64url');
   const state = randomBytes(16).toString('hex');
@@ -143,10 +147,10 @@ export async function loginMobile() {
   try {
     const context = await browser.newContext({ acceptDownloads: false, viewport: { width: 1280, height: 960 } });
     const callback = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Sign-in timed out after ten minutes. Run npm run login again.')), 600_000);
+      const timer = setTimeout(() => reject(new PublicError('Sign-in timed out after ten minutes. Run npm run login again.')), 600_000);
       const closed = () => {
         clearTimeout(timer);
-        reject(new Error('The sign-in window was closed before sign-in finished. Run npm run login again.'));
+        reject(new PublicError('The sign-in window was closed before sign-in finished. Run npm run login again.'));
       };
       browser.on('disconnected', closed);
       context.on('page', (page) => {
@@ -167,19 +171,19 @@ export async function loginMobile() {
     // Closing at once also dismisses any prompt to open the app's callback address in another program.
     await browser.close().catch(() => {});
   }
-  if (callbackUrl.searchParams.get('state') !== state) throw new Error('Sign-in state mismatch. Please retry.');
+  if (callbackUrl.searchParams.get('state') !== state) throw new PublicError('Sign-in state mismatch. Please retry.');
   const code = callbackUrl.searchParams.get('code');
-  if (!code) throw new Error('ID-porten did not return an authorization code.');
+  if (!code) throw new PublicError('ID-porten did not return an authorization code.');
   const oidc = await formPost(metadata.token_endpoint, {
     grant_type: 'authorization_code', code, redirect_uri: redirectUri,
     client_id: clientId, code_verifier: verifier,
   });
-  if (!oidc.access_token) throw new Error('ID-porten did not return an access token.');
+  if (!oidc.access_token) throw new PublicError('ID-porten did not return an access token.');
   const exchanged = await jsonRequest(`${portalOrigin}/api/exchange-app-token`, {
     method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ accessToken: oidc.access_token, provider: 'idporten' }),
   });
-  if (!exchanged.authCode) throw new Error('Skolemelding did not accept the ID-porten sign-in.');
+  if (!exchanged.authCode) throw new PublicError('Skolemelding did not accept the ID-porten sign-in.');
   const deviceId = randomUUID();
   const uniqueId = `${deviceId}|${Math.floor(Date.now() / 1000)}|Foresatte`;
   const mobile = await formPost(`${portalOrigin}/token`, {
@@ -187,7 +191,7 @@ export async function loginMobile() {
     client_id: tokenClientId, app_version: appVersion, password: 'code',
   });
   if (!mobile.access_token || !mobile.refresh_token || !mobile.userName) {
-    throw new Error('Skolemelding did not return renewable credentials.');
+    throw new PublicError('Skolemelding did not return renewable credentials.');
   }
   const auth = {
     accessToken: mobile.access_token, refreshToken: mobile.refresh_token,

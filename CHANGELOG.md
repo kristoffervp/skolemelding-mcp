@@ -2,6 +2,13 @@
 
 [Norsk](CHANGELOG.no.md)
 
+## 0.8.0 (2026-11-25)
+
+- Only error messages the server wrote itself reach the client. Before, an unexpected reply could be quoted in the error, for example the start of a response that was not JSON.
+- Responses from Skolemelding and the sign-in service are capped (2 MB and 100 KB), and a request line from the client at 64 KB, so an oversized reply can't fill the memory of a small computer.
+- A lock left by a process that crashed during sign-in renewal is cleared after 40 seconds instead of 90, so the next call waits for it instead of failing as busy.
+- The read tools are marked read-only (`readOnlyHint`). `package.json` states Node.js 20 or later.
+
 ## 0.7.0 (2026-11-24)
 
 - Sending, off unless `SKOLEMELDING_ALLOW_SEND=1`: reply in a thread, answer yes/no questions, confirm reading, write to staff, and report absence. Every send takes two steps: a `prepare_…` tool, then `send_prepared` with a one-time code. Sent items are logged in `.data/sent.jsonl`.

@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.md)
 
+## 0.8.0 (2026-11-25)
+
+- Bare feilmeldinger serveren selv har skrevet, når klienten. Før kunne et uventet svar bli sitert i feilen, for eksempel starten på et svar som ikke var JSON.
+- Svar fra Skolemelding og innloggingstjenesten har en grense (2 MB og 100 kB), og en forespørselslinje fra klienten 64 kB, så et for stort svar ikke kan fylle minnet på en liten datamaskin.
+- En lås som ble liggende etter at en prosess krasjet under fornying av innloggingen, fjernes etter 40 sekunder i stedet for 90, så neste kall venter på den i stedet for å feile som opptatt.
+- Lesetjenestene er merket som skrivebeskyttet (`readOnlyHint`). `package.json` sier Node.js 20 eller nyere.
+
 ## 0.7.0 (2026-11-24)
 
 - Sending, av med mindre `SKOLEMELDING_ALLOW_SEND=1`: svar i en tråd, svar på ja/nei-spørsmål, bekreft at du har lest, skriv til ansatte og meld fravær. All sending skjer i to steg: et `prepare_…`-verktøy, så `send_prepared` med en engangskode. Det som sendes, logges i `.data/sent.jsonl`.

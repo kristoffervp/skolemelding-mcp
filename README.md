@@ -132,6 +132,7 @@ Set these in the client config (and in Terminal for `npm run login`):
 
 - The server runs on your computer and opens no network port. Any AI client you connect can still read your school messages, and a cloud AI service receives what the client reads. Decide what you are willing to share.
 - Message text is passed on as information, not instructions. Invisible characters and hidden HTML are removed, but that can't stop every attempt to steer the AI. Use clients you trust and review tool calls.
+- Error messages shown to the client are written by the server itself and never repeat responses from Skolemelding or the content of local files.
 - `.data/` holds your sign-in. Never share it. Attachments stay there until you delete them, and the paths returned to the client include your user name.
 - Signing in registers this computer as a device on your account, as the app does. It sends the operating system and its version, the app version and a random device ID. The browser profile used for the sign-in is deleted afterwards.
 - To report a vulnerability, see [SECURITY.md](SECURITY.md).

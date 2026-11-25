@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { convert } from 'html-to-text';
 import { attachmentDirPath } from './browser.js';
+import { PublicError } from './errors.js';
 import { writePrivateFile } from './files.js';
 import { portalOrigin as origin } from './mobile-auth.js';
 import { MobileClient } from './mobile-client.js';
@@ -124,7 +125,7 @@ export class Portal {
     const messages = [];
     const started = Date.now();
     for (let page = 1; page <= maxPages; page++) {
-      if (Date.now() - started > scanDeadline) throw new Error('Searching the inbox took too long. Try again later.');
+      if (Date.now() - started > scanDeadline) throw new PublicError('Searching the inbox took too long. Try again later.');
       const payload = await this.#mobile.searchPage(page, pageSize, filters);
       messages.push(...payload.Result);
       this.#remember(payload.Result);
@@ -139,7 +140,7 @@ export class Portal {
     const cached = this.#cached(id);
     if (cached) return cached;
     const missingAt = this.#missing.get(id);
-    if (missingAt && Date.now() - missingAt < cacheTtl) throw new Error('Message not found in the inbox.');
+    if (missingAt && Date.now() - missingAt < cacheTtl) throw new PublicError('Message not found in the inbox.');
     if (!this.#lookups.has(id)) {
       this.#lookups.set(id, this.#search({ id }).finally(() => this.#lookups.delete(id)));
     }
@@ -147,7 +148,7 @@ export class Portal {
     const message = this.#cached(id);
     if (!message) {
       this.#missing.set(id, Date.now());
-      throw new Error('Message not found in the inbox.');
+      throw new PublicError('Message not found in the inbox.');
     }
     return message;
   }
@@ -221,7 +222,7 @@ export class Portal {
   async childFor(query) {
     if (query !== undefined) return (await this.#findChild(query)).child;
     const children = await this.#childList();
-    if (children.length !== 1) throw new Error(`Name the child: ${children.map(({ name }) => name).join(', ') || 'none found'}.`);
+    if (children.length !== 1) throw new PublicError(`Name the child: ${children.map(({ name }) => name).join(', ') || 'none found'}.`);
     return children[0];
   }
 
@@ -239,19 +240,19 @@ export class Portal {
     const wanted = query.trim().replace(/\s+/g, ' ').toLocaleLowerCase('nb');
     const found = children.filter((child) => child.aliases.includes(wanted));
     const known = children.map(({ name }) => name).join(', ') || 'none';
-    if (found.length === 0) throw new Error(`No child named "${query}" on this account. Children: ${known}.`);
-    if (found.length > 1) throw new Error(`"${query}" matches more than one child. Use the full name: ${known}.`);
+    if (found.length === 0) throw new PublicError(`No child named "${query}" on this account. Children: ${known}.`);
+    if (found.length > 1) throw new PublicError(`"${query}" matches more than one child. Use the full name: ${known}.`);
     return { child: found[0], children };
   }
 
   async listMessages(limit = 30, { child, search, unreadOnly = false, questionsOnly = false, absenceOnly = false } = {}) {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Limit must be an integer from 1 to 100.');
-    if (child !== undefined && (typeof child !== 'string' || !child.trim())) throw new Error('Child must be a non-empty name.');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new PublicError('Limit must be an integer from 1 to 100.');
+    if (child !== undefined && (typeof child !== 'string' || !child.trim())) throw new PublicError('Child must be a non-empty name.');
     if (search !== undefined && (typeof search !== 'string' || !search.trim() || search.length > 100)) {
-      throw new Error('Search must be non-empty text of at most 100 characters.');
+      throw new PublicError('Search must be non-empty text of at most 100 characters.');
     }
     for (const flag of [unreadOnly, questionsOnly, absenceOnly]) {
-      if (typeof flag !== 'boolean') throw new Error('Filters must be true or false.');
+      if (typeof flag !== 'boolean') throw new PublicError('Filters must be true or false.');
     }
     const filters = { search: search?.trim() ?? '', unread: unreadOnly, question: questionsOnly, absence: absenceOnly };
     let children;
@@ -272,20 +273,20 @@ export class Portal {
   }
 
   async getMessage(id, { includeHtml = false } = {}) {
-    if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new Error('Invalid message ID.');
+    if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new PublicError('Invalid message ID.');
     const [message, children] = await Promise.all([this.#find(normalizeId(id)), this.#childListOrEmpty()]);
     return this.#normalize(message, { full: true, includeHtml, children });
   }
 
   async getAttachment(attachmentId, { includeContent = false } = {}) {
     const match = typeof attachmentId === 'string' && attachmentId.match(/^(\d+):(\d+)$/);
-    if (!match) throw new Error('Invalid attachment ID.');
+    if (!match) throw new PublicError('Invalid attachment ID.');
     const messageId = normalizeId(match[1]);
     const index = Number(match[2]);
     const message = await this.#find(messageId);
     const path = Array.isArray(message.Attachments) ? message.Attachments[index] : undefined;
     const attachment = attachmentInfo(path, messageId, index);
-    if (!attachment) throw new Error('Attachment not found.');
+    if (!attachment) throw new PublicError('Attachment not found.');
     const { bytes, mimeType } = await this.#mobile.getAttachment(attachment.url);
     await mkdir(this.#attachmentDir, { recursive: true, mode: 0o700 });
     const filePath = join(this.#attachmentDir, fileName(messageId, index, attachment.name));

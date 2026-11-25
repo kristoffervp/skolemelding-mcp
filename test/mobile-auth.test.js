@@ -109,3 +109,10 @@ test('a stale lock is removed', async () => {
   assert.equal((await refreshMobileAuth(original)).refreshToken, 'new-refresh');
   await assert.rejects(stat(lockFile), { code: 'ENOENT' });
 });
+
+test('response bodies are capped before they are read into memory', async () => {
+  const { readLimited } = await import('../src/files.js');
+  assert.equal((await readLimited(new Response('small'), 100, 'too large')).toString(), 'small');
+  await assert.rejects(readLimited(new Response('x', { headers: { 'content-length': '101' } }), 100, 'too large'), /too large/);
+  await assert.rejects(readLimited(new Response('x'.repeat(101)), 100, 'too large'), /too large/);
+});

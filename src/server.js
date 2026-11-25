@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
-import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { PublicError } from './errors.js';
 import { MobileClient } from './mobile-client.js';
 import { Portal } from './portal.js';
 import { Sender, sendingEnabled } from './sending.js';
@@ -99,7 +99,8 @@ const tools = [
     inputSchema: { type: 'object', properties: { id: { type: 'string', pattern: '^\\d+$' }, include_html: { type: 'boolean', default: false } }, required: ['id'], additionalProperties: false } },
   { name: 'get_attachment', description: 'Save a message attachment (maximum 10 MB) to a local file and return its path, name, type, and size. Set include_content to also return the file itself as an image or embedded resource; do this if you cannot read local files.',
     inputSchema: { type: 'object', properties: { attachment_id: { type: 'string', pattern: '^\\d+:\\d+$' }, include_content: { type: 'boolean', default: false } }, required: ['attachment_id'], additionalProperties: false } },
-  ...(sendingEnabled() ? sendTools : [])].map((tool) => ({ ...tool, outputSchema: outputSchemas[tool.name] }));
+  ...(sendingEnabled() ? sendTools : [])].map((tool) => ({ annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+  ...tool, outputSchema: outputSchemas[tool.name] }));
 
 function send(message) { process.stdout.write(JSON.stringify(message) + '\n'); }
 function result(id, value) { send({ jsonrpc: '2.0', id, result: value }); }
@@ -159,20 +160,50 @@ async function handle(request) {
       error(id, -32601, `Method not found: ${method}`);
     }
   } catch (cause) {
-    // File system errors carry local paths, so only their code is shown.
-    const text = cause.syscall ? `Local file error (${cause.code}).` : cause.message || String(cause);
+    // Only messages this code wrote are shown. File system errors carry local paths, so only their code is shown.
+    const text = cause instanceof PublicError ? cause.message
+      : cause?.syscall ? `Local file error (${cause.code}).` : 'The Skolemelding request could not be completed.';
     result(id, { content: [{ type: 'text', text }], isError: true });
   }
 }
 
-// Requests run concurrently so a slow inbox scan does not block ping or other calls.
+// Requests run concurrently so a slow inbox scan does not block ping or other calls. A request line is capped
+// at 64 KB, so a runaway client cannot fill the memory.
+const maxInputBytes = 65_536;
 const pending = new Set();
-const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
-for await (const line of input) {
-  let request;
-  try { request = JSON.parse(line); }
-  catch { error(null, -32700, 'Invalid JSON'); continue; }
-  const task = handle(request).finally(() => pending.delete(task));
-  pending.add(task);
+let parts = [];
+let size = 0;
+let tooLarge = false;
+function append(chunk) {
+  if (tooLarge) return;
+  size += chunk.byteLength;
+  if (size > maxInputBytes) { tooLarge = true; parts = []; return; }
+  parts.push(chunk);
 }
+function finishLine() {
+  if (tooLarge) error(null, -32600, 'Request too large');
+  else if (size > 0) {
+    let request;
+    try { request = JSON.parse(Buffer.concat(parts, size).toString('utf8')); }
+    catch { request = undefined; error(null, -32700, 'Invalid JSON'); }
+    if (request !== undefined) {
+      const task = handle(request).finally(() => pending.delete(task));
+      pending.add(task);
+    }
+  }
+  parts = [];
+  size = 0;
+  tooLarge = false;
+}
+for await (const chunk of process.stdin) {
+  const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+  let start = 0;
+  for (let end = buffer.indexOf(10, start); end !== -1; end = buffer.indexOf(10, start)) {
+    append(buffer.subarray(start, end));
+    finishLine();
+    start = end + 1;
+  }
+  if (start < buffer.length) append(buffer.subarray(start));
+}
+if (size > 0 || tooLarge) finishLine();
 await Promise.allSettled(pending);

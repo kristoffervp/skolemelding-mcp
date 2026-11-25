@@ -19,6 +19,7 @@
 !/src/
 /src/*
 !/src/browser.js
+!/src/errors.js
 !/src/files.js
 !/src/login-mobile.js
 !/src/mobile-auth.js

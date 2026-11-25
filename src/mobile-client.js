@@ -48,7 +48,12 @@ export class MobileClient {
           headers: { ...options.headers, Authorization: `Bearer ${this.#auth.accessToken}` },
           redirect: 'manual', signal: AbortSignal.timeout(30_000),
         });
-      } catch { throw new PublicError('Could not connect to Skolemelding. Check network access and retry.'); }
+      } catch {
+        // A write that timed out may still have arrived, so a blind retry could send it twice.
+        throw new PublicError(options.method && options.method !== 'GET'
+          ? 'No answer from Skolemelding. It may have been sent: check in the Skolemelding app before you try again.'
+          : 'Could not connect to Skolemelding. Check network access and retry.');
+      }
     };
     const sentWith = this.#auth.accessToken;
     let response = await send();
@@ -79,6 +84,12 @@ export class MobileClient {
     const payload = await readJson(response);
     if (!Array.isArray(payload?.Result)) throw new PublicError('Unexpected mobile message response format.');
     return payload;
+  }
+
+  // Endpoints that change state with a GET and may answer with anything, such as MarkMessageRead.
+  async getText(path) {
+    const response = await this.#request(path, { method: 'GET' });
+    return (await readLimited(response, maxJsonBytes, 'Skolemelding sent a response that is too large.')).toString('utf8');
   }
 
   async getJson(path) {

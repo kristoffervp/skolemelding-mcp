@@ -23,10 +23,13 @@ const safeExtensions = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt'
 
 // Format and control characters (text-direction overrides, zero-width and Unicode tag characters) can hide
 // or disguise text, so they are removed from everything returned to the client.
-const invisibleCharacters = /(?![\n\t])[\p{Cf}\p{Cc}]/gu;
+// Also blank-looking letters (Hangul fillers, braille blank, U+034F) and the supplementary variation selectors, which
+// can carry hidden data; runs of ordinary variation selectors are cut to one so emoji still show.
+const invisibleCharacters = /(?![\n\t])[\p{Cf}\p{Cc}\u034F\u115F\u1160\u3164\uFFA0\u2800\u{E0100}-\u{E01EF}]/gu;
 
 export function clean(text) {
-  return String(text ?? '').toWellFormed().replace(invisibleCharacters, '');
+  return String(text ?? '').toWellFormed().replace(/[\u2028\u2029]/g, '\n').replace(invisibleCharacters, '')
+    .replace(/([\uFE00-\uFE0F])[\uFE00-\uFE0F]+/g, '$1');
 }
 
 // Content the parent cannot see in the app must not reach the AI client as ordinary text.
@@ -165,8 +168,11 @@ export class Portal {
         // FirstName can include middle names, so also accept the first given name with or without the last name.
         const aliases = [name, firstNames, givenName, [givenName, lastName].filter(Boolean).join(' ')]
           .filter(Boolean).map((alias) => alias.toLocaleLowerCase('nb'));
+        // The app refuses an absence report when no teacher is connected at the school: it would reach nobody.
+        const connected = (Array.isArray(child.DependentHasTeacherConnectedPerSchool) ? child.DependentHasTeacherConnectedPerSchool : [])
+          .find((entry) => entry?.SchoolCode === child.SchoolCode)?.HasTeacherConnected;
         return { userName: String(child.UserName), name: clean(name), school: clean(child.SchoolName),
-          schoolCode: String(child.SchoolCode || ''), aliases };
+          schoolCode: String(child.SchoolCode || ''), teacherConnected: typeof connected === 'boolean' ? connected : undefined, aliases };
       });
     this.#children = { list, at: Date.now() };
     return list;

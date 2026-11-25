@@ -66,8 +66,14 @@ Sett `SKOLEMELDING_ALLOW_SEND=1` (i `"env"` i klientoppsettet) for å få disse 
 | `prepare_message` | Gjør klart en ny melding til høyst 5 ansatte fra `list_recipients` |
 | `prepare_absence` | Gjør klart en melding om fravær: `today`, `tomorrow`, eller datoer (`ÅÅÅÅ-MM-DD`) med eventuelle klokkeslett (`TT:MM`) |
 | `send_prepared` | Sender det et prepare-verktøy har gjort klart |
+| `mark_read` | Merker en melding og ulest svar på den som lest, i ett steg. Den kan ikke merkes som ulest igjen |
 
-All sending skjer i to steg. Et prepare-verktøy sjekker forespørselen og viser nøyaktig hva som vil bli sendt, med en engangskode. Da er ingenting sendt ennå. `send_prepared` sender det én gang, og koden går ut etter 10 minutter. `send_prepared` er merket som en handling som ikke kan angres, så klienter som spør før slike handlinger, spør deg. Alt som sendes, logges i `.data/sent.jsonl`.
+All sending skjer i to steg. Et prepare-verktøy sjekker forespørselen og viser nøyaktig hva som vil bli sendt, med en engangskode. Da er ingenting sendt ennå. `send_prepared` sender det én gang, og koden går ut etter 10 minutter. `send_prepared` må også gjenta én-linjes `summary` fra prepare-steget, så godkjenningsspørsmålet i klienten viser hva som sendes. Alt som sendes, logges i `.data/sent.jsonl`.
+
+Serveren kan ikke vite at du har godkjent, så:
+- Støtter klienten MCP-elicitation (Claude Code gjør det), spør serveren deg selv før `send_prepared` og `mark_read` går gjennom. KI-en kan ikke svare på det for deg.
+- Ellers er klientens eget godkjenningsspørsmål den eneste kontrollen. Velg aldri «Tillat alltid» for `send_prepared` eller `mark_read`.
+- Kodene hører til serveren som kjører, så en kode fra én samtale virker i en annen samtale i samme klient i 10 minutter.
 
 - `include_other_parents` sender en kopi til barnets andre foresatte, som «Kopi til» i appen. For svar tillater Skolemelding det bare når svaret starter en ny tråd.
 - Bare tekst. Vedlegg og bilder støttes ikke.
@@ -80,7 +86,8 @@ Serveren kjører på datamaskinen din og snakker med KI-klienten over stdio. Bå
 
 ```mermaid
 flowchart LR
-  client["KI-klient<br/>Claude Desktop, ChatGPT …"]
+  you(["Du"])
+  client["KI-klient"]
   subgraph computer["Din datamaskin"]
     server["MCP-server<br/>src/server.js"]
     read["Leseverktøy<br/>portal.js"]
@@ -91,9 +98,11 @@ flowchart LR
   end
   idporten["ID-porten"]
   portal["Skoleplattform Oslo<br/>portal.skoleplattform.no"]
+  you <-->|"spør, ser forhåndsvisningen"| client
   client <-->|"MCP over stdio"| server
   server --> read
-  server --> send
+  server -->|"prepare → sammendrag og kode,<br/>så send_prepared"| send
+  send -.->|"ber deg bekrefte<br/>(MCP-elicitation)"| client
   read --> http
   send --> http
   http <-->|"HTTPS med app-innloggingen"| portal

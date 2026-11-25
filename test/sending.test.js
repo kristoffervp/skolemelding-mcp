@@ -18,12 +18,12 @@ function message(id, extra = {}) {
 }
 
 // A fake Skolemelding: the web search returns these messages, GET/POST are recorded.
-function fake(messages, { postResult = true, after = {} } = {}) {
+function fake(messages, { postResult = true, after = {}, childExtra = {}, parents = [{ Name: 'Per Hansen' }] } = {}) {
   const calls = { get: [], post: [] };
   let posted = false;
   const mobile = {
     calls,
-    async getChildren() { return [child]; },
+    async getChildren() { return [{ ...child, ...childExtra }]; },
     async webSearchPage(page, pageSize) {
       const list = messages.map((m) => (posted ? { ...m, ...after } : m));
       return { Result: list.slice((page - 1) * pageSize, page * pageSize), TotalMatching: list.length };
@@ -33,19 +33,20 @@ function fake(messages, { postResult = true, after = {} } = {}) {
       if (path.startsWith('/api/mychildsteachers')) return { Users: staff };
       if (path === '/Api/Settings') return { MaxRecipientsForParents: 2 };
       if (path.startsWith('/Api/Message/GetMessageWithId')) return [{ ThreadId: 't1', RecipientId: 'kl3a-thread', Replies: [] }];
-      if (path === '/Api/MyProfile/GetChildsParent') return [{ UserName: 'ada01', LstParentInfo: [{ Name: 'Per Hansen' }] }];
+      if (path === '/Api/MyProfile/GetChildsParent') return [{ UserName: 'ada01', LstParentInfo: parents }];
       throw new Error(`not stubbed: ${path}`);
     },
+    async getText(path) { calls.get.push(path); return ''; },
     async postJson(path, body) { calls.post.push({ path, body }); posted = true; return postResult; },
   };
   return mobile;
 }
 
-async function setup(messages, options) {
+async function setup(messages, options = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'skolemelding-send-'));
   const mobile = fake(messages, options);
   let now = Date.parse('2026-11-25T10:00:00Z');
-  const sender = new Sender({ mobile, portal: new Portal({ mobile }), log: join(dir, 'sent.jsonl'), now: () => now });
+  const sender = new Sender({ mobile, portal: new Portal({ mobile }), log: join(dir, 'sent.jsonl'), now: () => now, confirm: options.confirm });
   return { mobile, sender, dir, log: join(dir, 'sent.jsonl'), later: (ms) => { now += ms; } };
 }
 
@@ -56,12 +57,13 @@ test('a reply is prepared without sending, then sent once with the code, in the 
   assert.equal(mobile.calls.post.length, 0, 'prepare sends nothing');
   assert.deepEqual({ ...prepared, confirmationCode: undefined, note: undefined }, { action: 'reply', messageId: '7', subject: 'Subject 7',
     from: 'Kari Lærer', children: ['Ada Hansen'], to: ['Kari Lærer'], inThread: true, text: 'Mormor henter på fredag.\n\nHilsen Per',
+    summary: 'reply · Ada Hansen · to Kari Lærer · Subject 7 · «Mormor henter på fredag. Hilsen Per»',
     confirmationCode: undefined, expiresInMinutes: 10, note: undefined });
-  const sent = await sender.sendPrepared({ confirmation_code: prepared.confirmationCode });
+  const sent = await sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary });
   assert.equal(sent.sent, true);
   assert.deepEqual(mobile.calls.post, [{ path: '/api/ThreadMessage', body: { MessageId: 7, MessageText: 'Mormor henter på fredag.\n\nHilsen Per',
     OnBehalfOf: 'ada01', RecipientId: 'kl3a-thread', ThreadId: 't1', AddOtherParentInThread: false, AddOtherTeacherInThread: false, TeacherRecipients: [] } }]);
-  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode }), /Unknown or expired/);
+  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary }), /Unknown or expired/);
   assert.equal(mobile.calls.post.length, 1, 'the code works only once');
   const logged = (await readFile(log, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
   assert.equal(logged.length, 1);
@@ -73,7 +75,7 @@ test('without a thread the reply starts one to the author; several threads need 
   t.after(() => rm(dir, { recursive: true, force: true }));
   const prepared = await sender.prepareReply({ message_id: '8', text: 'Takk!' });
   assert.equal(prepared.inThread, false);
-  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode });
+  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary });
   assert.equal(mobile.calls.post[0].body.RecipientId, 'kl3a');
   assert.equal(mobile.calls.post[0].body.ThreadId, '');
   await assert.rejects(sender.prepareReply({ message_id: '9', text: 'Hei' }), /several threads.*a \(X\), b \(Y\)/);
@@ -99,13 +101,13 @@ test('yes/no answers and read confirmations are checked against the message and 
   t.after(() => rm(dir, { recursive: true, force: true }));
   const answer = await sender.prepareAnswer({ message_id: '20', answer: 'ja' });
   assert.equal(answer.question, 'Kan Ada være med?');
-  const sent = await sender.sendPrepared({ confirmation_code: answer.confirmationCode });
+  const sent = await sender.sendPrepared({ confirmation_code: answer.confirmationCode, summary: answer.summary });
   assert.equal(sent.verified, true);
   assert.deepEqual(mobile.calls.post[0], { path: '/Api/message/ConfirmFeedbackWithPossibleQuestion',
     body: { FeedbackGiven: 'Ja', Id: 20, MessageConfirmed: true, OnBehalfOf: 'ada01' } });
   await assert.rejects(sender.prepareAnswer({ message_id: '23', answer: 'nei' }), /no yes\/no question/);
   const read = await sender.prepareReadConfirmation({ message_id: '22' });
-  const confirmed = await sender.sendPrepared({ confirmation_code: read.confirmationCode });   // IsMessageConfirmed stays false in this fake
+  const confirmed = await sender.sendPrepared({ confirmation_code: read.confirmationCode, summary: read.summary });   // IsMessageConfirmed stays false in this fake
   assert.equal(confirmed.verified, false);
   assert.match(confirmed.note, /does not show it yet/);
   await assert.rejects(sender.prepareReadConfirmation({ message_id: '23' }), /not asked for a read confirmation/);
@@ -126,7 +128,7 @@ test('a new message goes only to staff from list_recipients, within the limit, a
   await assert.rejects(sender.prepareMessage({ recipients: ['kl3a', 'rektor1', 'x'], subject: 'Hei', text: 'Tekst' }), /at most 2/);
   const prepared = await sender.prepareMessage({ recipients: ['kl3a'], subject: 'Fravær fredag', text: 'Ada er hos tannlegen <kl 10>.\nHilsen Per' });
   assert.deepEqual(prepared.to, ['Kari Lærer']);
-  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode });
+  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary });
   const { path, body } = mobile.calls.post[0];
   assert.equal(path, '/Api/message/');
   assert.equal(body.Body, '<p>Ada er hos tannlegen &lt;kl 10&gt;.<br />Hilsen Per</p>');
@@ -140,7 +142,7 @@ test('codes expire after ten minutes', async (t) => {
   t.after(() => rm(dir, { recursive: true, force: true }));
   const prepared = await sender.prepareReply({ message_id: '30', text: 'Hei' });
   later(10 * 60_000 + 1);
-  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode }), /expired/);
+  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary }), /expired/);
   assert.equal(mobile.calls.post.length, 0);
 });
 
@@ -150,7 +152,7 @@ test('the other parent gets a copy only when the reply starts a new thread and t
   t.after(() => rm(dir, { recursive: true, force: true }));
   const prepared = await sender.prepareReply({ message_id: '40', text: 'Takk!', include_other_parents: true });
   assert.deepEqual([prepared.to, prepared.copyTo, prepared.inThread], [['Kari Lærer'], ['Per Hansen'], false]);
-  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode });
+  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary });
   assert.equal(mobile.calls.post[0].body.AddOtherParentInThread, true);
   assert.equal(mobile.calls.post[0].body.ThreadId, '');
   await assert.rejects(sender.prepareReply({ message_id: '41', text: 'Takk!', include_other_parents: true }), /new thread/);
@@ -165,10 +167,11 @@ test('an absence report has the same text and fields as the app form, and goes o
   const prepared = await sender.prepareAbsence({ when: 'dates', from_date: '2026-11-26', from_time: '08:00', to_time: '11:30', include_other_parents: true });
   assert.deepEqual([prepared.action, prepared.child, prepared.absence, prepared.copyTo], ['absence', 'Ada Hansen', '26.11.2026 kl. 08:00 til 11:30', ['Per Hansen']]);
   assert.equal(mobile.calls.post.length, 0);
-  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode });
-  assert.deepEqual(mobile.calls.post, [{ path: '/Api/message/', body: { Body: 'Elev: Ada Hansen \n Tidspunkt for fravær: 26.11.2026 kl. 08:00 til 11:30',
-    IsAbsenceReport: true, IsCreatedOnWeb: true, IsReplyAllowed: true, OnBehalfOf: 'ada01', SchoolId: 'NPS', IsOtherUserAdded: true,
-    IsSpecialMessage: false, HideReceivers: false } }]);
+  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary });
+  assert.deepEqual(mobile.calls.post, [{ path: '/Api/message/', body: { Attachments: [], Body: 'Elev: Ada Hansen \n Tidspunkt for fravær: 26.11.2026 kl. 08:00 til 11:30',
+    ExistingFileIds: [], FeedbackQuestionRequired: false, FeedbackRequired: false, GroupRecipients: [], Header: 'Melding om fravær',
+    IsAbsenceReport: true, IsCreatedOnWeb: true, IsReplyAllowed: true, IsSmsMessage: false, SmsNotification: false, UserRecipients: [],
+    OnBehalfOf: 'ada01', SchoolId: 'NPS', IsOtherUserAdded: true, IsSpecialMessage: false, HideReceivers: false } }]);
   await assert.rejects(sender.prepareAbsence({ when: 'yesterday' }), /today.*tomorrow.*dates/);
 });
 
@@ -187,4 +190,61 @@ test('absence times follow the app: whole days, date ranges, and times on one or
     [{ when: 'dates', from_date: '2026-11-26', from_time: '24:00', to_time: '25:00' }, /time like/]]) {
     assert.throws(() => absenceTime(args, now), why, JSON.stringify(args));
   }
+});
+
+test('an absence report is refused when no teacher is connected, and a copy needs another parent', async (t) => {
+  const none = await setup([], { childExtra: { DependentHasTeacherConnectedPerSchool: [{ SchoolCode: 'NPS', HasTeacherConnected: false }] } });
+  t.after(() => rm(none.dir, { recursive: true, force: true }));
+  await assert.rejects(none.sender.prepareAbsence({ when: 'today' }), /no recipients/);
+  const alone = await setup([], { parents: [] });
+  t.after(() => rm(alone.dir, { recursive: true, force: true }));
+  await assert.rejects(alone.sender.prepareMessage({ recipients: ['kl3a'], subject: 'Hei', text: 'Tekst', include_other_parents: true }), /No other parent/);
+  const connected = await setup([], { childExtra: { DependentHasTeacherConnectedPerSchool: [{ SchoolCode: 'NPS', HasTeacherConnected: true }] } });
+  t.after(() => rm(connected.dir, { recursive: true, force: true }));
+  assert.equal((await connected.sender.prepareAbsence({ when: 'today' })).subject, 'Melding om fravær');
+});
+
+test('mark_read marks the message and its unread replies, and sends nothing else', async (t) => {
+  const { mobile, sender, dir } = await setup([message(50, { Threads: [{ ThreadId: 't 1', IsSeen: false }, { ThreadId: 't2', IsSeen: true }] })]);
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const result = await sender.markRead({ message_id: '50' });
+  assert.deepEqual([result.markedRead, result.threads, result.subject], [true, 1, 'Subject 50']);
+  assert.deepEqual(mobile.calls.get.filter((path) => path.includes('MarkMessageRead')), [
+    '/api/message/MarkMessageRead?messageId=50&threadid=&onBehalfOf=ada01',
+    '/api/message/MarkMessageRead?messageId=50&threadid=t%201&onBehalfOf=ada01']);
+  assert.equal(mobile.calls.post.length, 0);
+  assert.match(await readFile(join(dir, 'sent.jsonl'), 'utf8'), /"action":"mark_read".*"messageId":"50"/);
+  await assert.rejects(sender.markRead({ message_id: '../1' }), /Invalid message ID/);
+});
+
+test('hidden characters and variation-selector runs are removed from previews', async () => {
+  const { clean } = await import('../src/portal.js');
+  assert.equal(clean('A\u3164B\u2800C\u{E0100}D\u034F'), 'ABCD');
+  assert.equal(clean('❤\uFE0F\uFE0F\uFE0F'), '❤\uFE0F');
+  assert.equal(clean('a\u2028b'), 'a\nb');
+});
+
+test('the parent confirms in the dialog: a no sends nothing and uses up the code', async (t) => {
+  const questions = [];
+  const { mobile, sender, dir } = await setup([message(60)], { confirm: async (text) => { questions.push(text); return false; } });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const prepared = await sender.prepareReply({ message_id: '60', text: 'Hei' });
+  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary }), /not confirmed/);
+  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary }), /Unknown or expired/);
+  await assert.rejects(sender.markRead({ message_id: '60' }), /not confirmed/);
+  assert.equal(mobile.calls.post.length, 0);
+  assert.equal(mobile.calls.get.some((path) => path.includes('MarkMessageRead')), false);
+  assert.match(questions[0], /^Skolemelding: reply\n.*text: Hei/s);
+});
+
+test('send_prepared needs the summary exactly as prepared', async (t) => {
+  const { mobile, sender, dir } = await setup([message(70)]);
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const prepared = await sender.prepareReply({ message_id: '70', text: 'Ada kommer   ikke\nHilsen Per' });
+  assert.equal(prepared.summary, 'reply · Ada Hansen · to Kari Lærer · Subject 70 · «Ada kommer ikke Hilsen Per»');
+  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode }), /summary does not match/);
+  await assert.rejects(sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: 'reply' }), /summary does not match/);
+  assert.equal(mobile.calls.post.length, 0);
+  await sender.sendPrepared({ confirmation_code: prepared.confirmationCode, summary: prepared.summary });
+  assert.equal(mobile.calls.post.length, 1);
 });

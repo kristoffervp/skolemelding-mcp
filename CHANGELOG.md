@@ -2,6 +2,14 @@
 
 [Norsk](CHANGELOG.no.md)
 
+## 0.9.0 (2026-11-25)
+
+- `prepare_absence` sends the subject «Melding om fravær» and the empty fields the app sends, and refuses when no teacher is connected to the child at the school, as the app does: the report would reach nobody.
+- `prepare_message` with `include_other_parents` refuses when no other parent is registered, like the reply and absence tools.
+- New `mark_read` (with `SKOLEMELDING_ALLOW_SEND=1`): marks a message and its unread replies as read. Skolemelding can't mark it unread again.
+- When the client supports MCP elicitation, `send_prepared` and `mark_read` ask the parent directly in the client before anything is sent, so text in a message can't make the AI both prepare and approve a send. `send_prepared` also needs the prepared `summary`, so the client's approval prompt shows the content.
+- A send whose answer never arrives says it may have been sent, instead of asking you to retry. A failed log write no longer turns a completed send into an error. More invisible characters are removed (blank-looking letters, variation-selector runs).
+
 ## 0.8.0 (2026-11-25)
 
 - Only error messages the server wrote itself reach the client. Before, an unexpected reply could be quoted in the error, for example the start of a response that was not JSON.

@@ -96,6 +96,10 @@ test('MCP exposes only the four read tools and negotiates a protocol version', a
     assert.deepEqual(listed.result.tools.map(({ name }) => name), [
       'list_children', 'list_messages', 'get_message', 'get_attachment',
     ]);
+    for (const name of ['send_prepared', 'mark_read', 'prepare_absence']) {
+      const called = await server.call('tools/call', { name, arguments: { confirmation_code: 'deadbeef', summary: 'x', message_id: '1', when: 'today' } });
+      assert.match(called.error.message, /Unknown tool/, `${name} must not run without SKOLEMELDING_ALLOW_SEND=1`);
+    }
     const [, listMessages, getMessage, getAttachment] = listed.result.tools;
     for (const tool of listed.result.tools) {
       assert.equal(tool.outputSchema.type, 'object', `${tool.name} should describe its result`);
@@ -186,7 +190,7 @@ test('sending tools exist only with SKOLEMELDING_ALLOW_SEND=1, and only send_pre
   try {
     const listed = await server.call('tools/list');
     assert.deepEqual(listed.result.tools.map(({ name }) => name), ['list_children', 'list_messages', 'get_message', 'get_attachment',
-      'list_recipients', 'prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'prepare_absence', 'send_prepared']);
+      'list_recipients', 'prepare_reply', 'prepare_answer', 'prepare_read_confirmation', 'prepare_message', 'prepare_absence', 'mark_read', 'send_prepared']);
     for (const tool of listed.result.tools) assert.equal(tool.outputSchema.type, 'object', `${tool.name} should describe its result`);
     const send = listed.result.tools.at(-1);
     assert.deepEqual(send.annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true });
@@ -224,4 +228,49 @@ test('read tools are marked read-only, and an oversized request line is refused 
     assert.equal((await refused).error.message, 'Request too large');
     assert.deepEqual((await server.call('ping')).result, {});
   } finally { await server.stop(); }
+});
+
+test('with elicitation, the parent and not the AI confirms mark_read in the client dialog', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'skolemelding-mcp-test-'));
+  const authFile = join(directory, 'mobile-auth.json');
+  await writeFile(authFile, JSON.stringify({ accessToken: 'access', refreshToken: 'refresh', userName: 'user', expiresAt: Date.now() + 3_600_000 }), { mode: 0o600 });
+  const network = `
+const marked = [];
+globalThis.fetch = async (url) => {
+  const { pathname } = new URL(url);
+  if (pathname === '/Api/MessageSearch') return Response.json({ TotalMatching: 1, Result: [{ Id: 7, Header: 'Hi', From: 'Kari', OnBehalfOf: 'ada01', Threads: [] }] });
+  if (pathname === '/api/MyProfile/GetChildInfo') return Response.json({ ParentChildOptions: [{ FirstName: 'Ada', LastName: 'Hansen', UserName: 'ada01' }] });
+  if (pathname === '/api/message/MarkMessageRead') { process.stderr.write('MARKED\\n'); return new Response(''); }
+  return new Response('not stubbed', { status: 500 });
+};`;
+  const child = spawn(process.execPath, [`--import=data:text/javascript,${encodeURIComponent(network)}`, 'src/server.js'], {
+    stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, SKOLEMELDING_MOBILE_AUTH_FILE: authFile, SKOLEMELDING_DATA_DIR: directory, SKOLEMELDING_ALLOW_SEND: '1' } });
+  let stderr = '';
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  const lines = [];
+  let wake = () => {};
+  createInterface({ input: child.stdout }).on('line', (line) => { lines.push(JSON.parse(line)); wake(); });
+  const next = async (test) => { for (;;) { const found = lines.find(test); if (found) return found; await new Promise((r) => { wake = r; }); } };
+  const write = (message) => child.stdin.write(JSON.stringify(message) + '\n');
+  try {
+    write({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: { elicitation: {} } } });
+    await next((m) => m.id === 1);
+    write({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'mark_read', arguments: { message_id: '7' } } });
+    const ask = await next((m) => m.method === 'elicitation/create');
+    assert.match(ask.params.message, /mark_read[\s\S]*subject: Hi/);
+    assert.equal(stderr.includes('MARKED'), false, 'nothing happens before the parent answers');
+    write({ jsonrpc: '2.0', id: ask.id, result: { action: 'decline' } });
+    const declined = await next((m) => m.id === 2);
+    assert.match(declined.result.content[0].text, /not confirmed/);
+    write({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'mark_read', arguments: { message_id: '7' } } });
+    const again = await next((m) => m.method === 'elicitation/create' && m.id !== ask.id);
+    write({ jsonrpc: '2.0', id: again.id, result: { action: 'accept', content: { confirm: true } } });
+    const done = await next((m) => m.id === 3);
+    assert.equal(done.result.structuredContent.markedRead, true);
+    assert.equal(stderr.includes('MARKED'), true);
+  } finally {
+    child.stdin.end();
+    await new Promise((resolve) => child.on('close', resolve));
+    await rm(directory, { recursive: true, force: true });
+  }
 });

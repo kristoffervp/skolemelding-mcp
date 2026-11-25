@@ -2,6 +2,14 @@
 
 [Norsk](CHANGELOG.no.md)
 
+## 0.10.0 (2026-11-25)
+
+New with `SKOLEMELDING_ALLOW_SEND=1`:
+- `prepare_mark_all_read`: marks all messages about a child as read, like «Marker alle meldinger som lest for valgt barn» in the app. It takes two steps, with `send_prepared`, because it can't be undone. The preview shows how many messages are unread.
+- `set_favourite` and `set_hidden`: favourite or hide a message, or undo it. You give the state you want. Skolemelding only has on/off switches, so the server reads the message first, and again after you confirm, changes nothing when it is already as asked, and reads it again afterwards (`verified`). A change that doesn't show yet blocks new changes to that message for 5 minutes. A message about several children needs `child`.
+- The confirmation dialog shows each value on one short line, the deciding field first and the text that is sent last, so a subject with line breaks can't fake a line. A send that fails is also logged.
+- Attachments are not added: in the app and the web portal only staff can attach files.
+
 ## 0.9.0 (2026-11-25)
 
 - `prepare_absence` sends the subject «Melding om fravær» and the empty fields the app sends, and refuses when no teacher is connected to the child at the school, as the app does: the report would reach nobody.

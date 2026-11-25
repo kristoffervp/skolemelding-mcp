@@ -16,6 +16,15 @@ const maxText = 5_000;
 const maxSubject = 200;
 const pageSize = 15;
 const maxPages = 20;
+// The preview of mark-all-read counts at most this many unread messages (list_messages' limit).
+const maxUnreadCount = 100;
+// After a toggle that does not show yet, the message is not toggled again for this long.
+const unsettledFor = 5 * 60_000;
+// Shown first in the confirmation dialog.
+const decisive = ['hidden', 'favourite', 'effect', 'answer', 'absence', 'to', 'copyTo'];
+const oneLine = (value) => (Array.isArray(value) ? value.join(', ') : String(value)).replace(/[\s\p{Cc}]+/gu, ' ').trim();
+
+const unreadCount = (count) => `${count}${count >= maxUnreadCount ? '+' : ''}`;
 
 function text(value, name, max) {
   if (typeof value !== 'string' || !value.trim()) throw new PublicError(`${name} must be non-empty text.`);
@@ -83,7 +92,8 @@ export class Sender {
   #log;
   #now;
   #pending = new Map();
-
+  #toggles = Promise.resolve();
+  #unsettled = new Map();
   #confirm;
 
   constructor({ mobile, portal, log = sentLogPath, now = Date.now, confirm = async () => null }) {
@@ -124,8 +134,9 @@ export class Sender {
     const code = randomBytes(4).toString('hex');
     // send_prepared must repeat this line, so a client's approval prompt shows what is sent, not only a code.
     const summary = [action, preview.child || preview.children?.join(', '), preview.to?.length && `to ${preview.to.join(', ')}`,
-      preview.subject, preview.absence, preview.answer, preview.text && `«${preview.text.replace(/\s+/g, ' ').slice(0, 80)}»`]
-      .filter(Boolean).join(' · ').slice(0, 300);
+      preview.subject, preview.absence, preview.answer, preview.text && `«${preview.text.replace(/\s+/g, ' ').slice(0, 80)}»`,
+      preview.unreadMessages && `${unreadCount(preview.unreadMessages)} unread messages`]
+      .filter(Boolean).map(oneLine).join(' · ').slice(0, 300);
     this.#pending.set(code, { action, request, preview, verify, summary, expiresAt: now + codeTtl });
     return { action, ...preview, summary, confirmationCode: code, expiresInMinutes: codeTtl / 60_000,
       note: 'Nothing has been sent. Show this to the parent, and call send_prepared with the code and the summary only after they approve it.' };
@@ -261,10 +272,118 @@ export class Sender {
     return this.#logged({ action: 'mark_read', ...result }, result);
   }
 
+  // The app's «Marker alle meldinger som lest for valgt barn»: one call for every message about the child. It can't be
+  // undone, so it is prepared and sent with send_prepared like a message.
+  async prepareMarkAllRead({ child } = {}) {
+    const found = await this.#portal.childFor(child);
+    const unread = await this.#portal.listMessages(maxUnreadCount, { child: found.name, unreadOnly: true });
+    if (!unread.length) throw new PublicError(`No unread messages for ${found.name}.`);
+    return this.#prepare('mark_all_read', { path: '/api/Message/sync-unread', body: { OnBehalfOn: found.userName } },
+      { effect: `Marks all ${unreadCount(unread.length)} unread messages about ${found.name} as read, and any that arrive before it is sent. It can't be undone.`,
+        child: found.name, unreadMessages: unread.length }, null);
+  }
+
+  // Every copy of a received message as the app's search returns it, with IsFavourite and IsHidden. A message about
+  // several children has one copy per child (OnBehalfOf), and each can be hidden on its own. Hidden copies are only in
+  // the search that includes them, so the plain inbox is searched first: a copy found there is not hidden.
+  async #appCopies(id) {
+    const copies = [];
+    for (const hidden of [false, true]) {
+      let matchedOn = 0;
+      for (let page = 1; page <= maxPages; page++) {
+        const { Result, TotalMatching } = await this.#mobile.searchPage(page, pageSize, { hidden });
+        for (const message of Result.filter((m) => String(m.Id) === id)) {
+          matchedOn ||= page;
+          if (!copies.some((c) => c.message.OnBehalfOf === message.OnBehalfOf)) copies.push({ message, inInbox: !hidden });
+        }
+        // Copies of one message sit next to each other, so the page after the first match is the last one needed.
+        if ((matchedOn && page > matchedOn) || page * pageSize >= Number(TotalMatching) || Result.length < pageSize) break;
+      }
+    }
+    return copies;
+  }
+
+  // The copy for one child (a UserName), or the only copy when no child is given.
+  async #appMessage(id, child) {
+    const copies = await this.#appCopies(id);
+    if (!copies.length) throw new PublicError('Message not found among the newest messages.');
+    if (child === undefined) {
+      if (copies.length === 1) return copies[0];
+      const names = await this.#portal.childNames(copies.map((c) => c.message.OnBehalfOf));
+      throw new PublicError(`This message is about several children${names.length ? ` (${names.join(', ')})` : ''}. Choose one with child.`);
+    }
+    const copy = copies.find((c) => c.message.OnBehalfOf === child);
+    if (!copy) throw new PublicError('This message is not about that child.');
+    return copy;
+  }
+
+  // Favourite and hide are toggles in Skolemelding, so the state is read first, and again after the dialog, and nothing
+  // is sent when the message is already as asked. Toggles run one at a time, so two calls cannot flip one message twice.
+  // After a toggle that does not show yet (reads can lag) or got no clear answer, the message is left alone for a few
+  // minutes, so a retry cannot flip it back.
+  // shortcut: the lock and that guard are per server process; two processes can still toggle one message at once, add a lock file if that happens.
+  async #setFlag(id, wanted, childName, { action, field, path, state }) {
+    if (typeof wanted !== 'boolean') throw new PublicError(`${field} must be true or false.`);
+    const wantedId = messageId(id);
+    const run = this.#toggles.then(async () => {
+      const child = childName === undefined ? undefined : (await this.#portal.childFor(childName)).userName;
+      let found = await this.#appMessage(wantedId, child);
+      const copyOf = found.message.OnBehalfOf;
+      const key = `${found.message.Id}:${copyOf ?? ''}`;
+      const now = this.#now();
+      for (const [k, until] of this.#unsettled) if (until <= now) this.#unsettled.delete(k);
+      if (this.#unsettled.has(key)) {
+        throw new PublicError(`An earlier change to this message does not show yet. Check in the Skolemelding app; this tool will not change it again for ${Math.ceil((this.#unsettled.get(key) - now) / 60_000)} minutes.`);
+      }
+      const read = (copy) => {
+        const current = state(copy);
+        if (current === null) throw new PublicError(`Could not read whether this message is ${field === 'hidden' ? 'hidden' : 'a favourite'}. Change it in the Skolemelding app.`);
+        return current;
+      };
+      const described = await this.#describe(found.message);
+      if (read(found) === wanted) return { changed: false, [field]: wanted, ...described };
+      await this.#confirmed(action, { [field]: wanted, ...described });
+      // The dialog can stay open for ten minutes, and the parent may change it in the app meanwhile.
+      found = await this.#appMessage(wantedId, copyOf);
+      if (read(found) === wanted) return { changed: false, [field]: wanted, ...described, note: 'It was already changed while waiting for the confirmation, so nothing was sent.' };
+      let response;
+      try {
+        response = await this.#mobile.postJson(path, { id: found.message.Id, onBehalfOf: copyOf || '' });
+      } catch (error) {
+        this.#unsettled.set(key, this.#now() + unsettledFor);
+        await this.#logged({ action, [field]: wanted, ...described, failed: true, error: error instanceof PublicError ? error.message : 'Unexpected error.' }, {});
+        throw error;
+      }
+      if (response === false) throw new PublicError('Skolemelding did not accept it. Check in the Skolemelding app.');
+      const verified = await this.#appMessage(wantedId, copyOf).then(state, () => null) === wanted;
+      if (!verified) this.#unsettled.set(key, this.#now() + unsettledFor);
+      const result = { changed: true, [field]: wanted, ...described, verified };
+      return this.#logged({ action, ...result }, verified ? result
+        : { ...result, note: `Skolemelding accepted the request, but the message does not show it yet. Check in the Skolemelding app; this tool will not change it again for ${unsettledFor / 60_000} minutes.` });
+    });
+    this.#toggles = run.catch(() => {});
+    return run;
+  }
+
+  setFavourite({ message_id: id, favourite, child } = {}) {
+    return this.#setFlag(id, favourite, child, { action: 'set_favourite', field: 'favourite', path: '/api/message/ToggleMessageFavourite',
+      state: ({ message }) => (typeof message.IsFavourite === 'boolean' ? message.IsFavourite : null) });
+  }
+
+  setHidden({ message_id: id, hidden, child } = {}) {
+    return this.#setFlag(id, hidden, child, { action: 'set_hidden', field: 'hidden', path: '/api/message/MarkMessageHidden',
+      state: ({ message, inInbox }) => (message.IsHidden === true ? true : inInbox ? false : null) });
+  }
+
   // Asks the parent in the client's dialog when the client can. null means it cannot ask, and the client's own tool
   // approval is the check; anything but a clear yes stops it.
+  // Values can come from school staff, so each is one short line, the fields that decide what happens come first, and
+  // the text that is sent comes last under its own heading: no value can pass for another field or push one out of view.
   async #confirmed(action, preview) {
-    const lines = Object.entries(preview).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
+    const { text: body, ...fields } = preview;
+    const keys = [...decisive.filter((key) => key in fields), ...Object.keys(fields).filter((key) => !decisive.includes(key))];
+    const lines = keys.map((key) => `${key}: ${oneLine(fields[key]).slice(0, 200)}`);
+    if (body) lines.push('', 'Text that is sent:', body);
     const question = `Skolemelding: ${action}\n${lines.join('\n')}`;
     const answer = await this.#confirm(question.length > 4_000 ? `${question.slice(0, 3_999)}…` : question);
     if (answer === false) throw new PublicError('Not sent: it was not confirmed in the dialog. Prepare it again if the parent still wants it.');
@@ -290,7 +409,13 @@ export class Sender {
     if (summary !== entry.summary) throw new PublicError('The summary does not match what was prepared. Pass the summary exactly as prepare returned it.');
     this.#pending.delete(code);  // single use, also when sending fails, so nothing is ever sent twice by a retry
     await this.#confirmed(entry.action, entry.preview);
-    const response = await this.#mobile.postJson(entry.request.path, entry.request.body);
+    let response;
+    try {
+      response = await this.#mobile.postJson(entry.request.path, entry.request.body);
+    } catch (error) {
+      await this.#logged({ action: entry.action, ...entry.preview, failed: true, error: error instanceof PublicError ? error.message : 'Unexpected error.' }, {});
+      throw error;
+    }
     if (response === false) throw new PublicError('Skolemelding did not accept it. Check in the Skolemelding app.');
     let verified = null;
     if (entry.verify) {

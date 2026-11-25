@@ -70,7 +70,8 @@ export class MobileClient {
     return response;
   }
 
-  async searchPage(page, pageSize, { search = '', unread = false, question = false, absence = false } = {}) {
+  // hidden: also return messages the parent has hidden («Inkluder skjulte meldinger» in the app).
+  async searchPage(page, pageSize, { search = '', unread = false, question = false, absence = false, hidden = false } = {}) {
     const response = await this.#request('/api/messagesearchmobile/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
@@ -78,7 +79,7 @@ export class MobileClient {
         FilterSender: null, FilterUnreadMessages: unread, FilterFeedbackRequired: false,
         FilterFeedbackIsQuestion: question, FilterIsAbsentMessage: absence,
         OnBehalfOf: '', AuthorUserCategory: null, FilterFavouriteMessages: false,
-        SendHiddenMessages: false,
+        SendHiddenMessages: hidden,
       }),
     });
     const payload = await readJson(response);
